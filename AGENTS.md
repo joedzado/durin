@@ -3,19 +3,16 @@
 Passkey gate for a family of hosts (Revet, C++23). A reverse proxy's forward auth asks Durin about every request to a gated host under the suffix; one sign-in at the auth host covers every app. Named for the Doors of Durin. Proxy setup: `docs/proxies.md`.
 
 ## Build, run
-- Needs Revet `main` (0.4.1 with `revet/auth` and `passkeys::Expect`): `revet build`. `REVET_FRAMEWORK=<checkout> revet build` builds against a framework checkout instead.
-- `scripts/serve.sh [port]` (default 3130) loads `.env.local`; copy `.env.example` and fill it in (600, not in git). Required: `REVET_COOKIE_KEY`, `DURIN_AUTH_HOST`. Durin refuses to start without an auth host.
-- `DURIN_SETUP_CODE` makes an owner while there is none (`owner_count == 0`) and is ignored otherwise (delete it afterwards). Then only an owner's one-use invite link (account page, 7 days) makes an account. Owners list and remove people; nobody can remove an owner. Recovery for a lost owner is in the README.
-- Sessions: `DURIN_IDLE_SECONDS` (300), `DURIN_MAX_SECONDS` (43200), `DURIN_REMEMBER_SECONDS` (30 days, "Remember me").
-- Unit tests: `ctest --test-dir build` (`tests/test_durin.cpp`: host and return-address checks, original-request headers, sessions, codes, invites, owners, forward auth, recovery). Keep them passing; a rule change needs a test.
-- Browser test (empty database; it creates accounts, so wipe `data/` afterwards):
-  `set -a; . ./.env.local; E2E_APPS=a.<suffix>,b.<suffix>,c.<suffix> node tests/e2e/durin_browser.mjs <chromium> <proxy cert> [proxy address[:port]]`
-- Mac client setup for a private suffix: `sudo sh scripts/mac-setup.sh <root.crt> <suffix> <dns server>`.
+- `./install.sh <host> <proxy>` does everything on a new machine; with no arguments it rebuilds and restarts. It prints the matching `## <Proxy>` section of `docs/proxies.md`, replacing `example.com`, `auth.example.com` and `3130`, so recipes keep those placeholders.
+- By hand: `revet build` (Revet `main`), then `./durin`. `./durin owner` prints an owner link. Settings: `.env.local`.
+- Unit tests: `ctest --test-dir build`. A rule change needs a test.
+- Browser test, through a real proxy on an empty database: see the top of `tests/e2e/durin_browser.mjs`.
+- A new setting, step or file in the install is a cost to every user: avoid it.
 
 ## How it works
 1. Proxy: `/.durin/*` on any gated host goes to Durin; everything else passes forward auth → `GET /.durin/verify` (302 on failure) or `/.durin/auth-request` (401 + `Location`, for nginx).
 2. Sign-in starts on the app host: verify answers a 302 (or 401 + `Location`) to `https://<app host>/.durin/start?rd=<path>`; `start` plants the `__Host-durin-nonce` cookie and sends the browser to the auth host with `n=<hash of the nonce>`; the auth host binds the one-time code to that hash; `callback` redeems it only with the matching cookie (login-CSRF defence). Never mint a code without a valid `n`.
-   The original host and path come from `X-Forwarded-Host`/`-Uri` (`DURIN_PROXY=forwarded`) or `X-Original-URL` (`original`), and only from `REVET_TRUSTED_PROXIES`.
+   `verify` reads X-Forwarded-Host/-Uri, `auth-request` reads X-Original-URL; everything else goes by Host.
 3. verify: a `__Host-durin` cookie naming a live session for that exact host → 200 + `DURIN_USER_HEADER: <name>`. Otherwise to the start address above.
 4. Auth host: passkey sign-in (framework `web::auth::passkeys`, RP ID = auth host). Signed in + valid `rd` (https, an app host, no userinfo) + valid `n` → one-time code (60 s, single use, bound to the host and the nonce hash) → `https://<host>/.durin/callback?code=…&rd=/path`.
 5. callback swaps the code for a host-only cookie on that host. No shared cookie: browsers refuse one on a bare public suffix, and host-only cookies leak less.
@@ -42,4 +39,5 @@ Passkey gate for a family of hosts (Revet, C++23). A reverse proxy's forward aut
 | `app/components/ui.cpp`, `app/scripts/durin.js` | Pages; passkey ceremonies in the browser (no libraries) |
 | `tests/test_durin.cpp` | Unit tests for `src/durin.hpp` on a throwaway SQLite database |
 | `tests/e2e/durin_browser.mjs` | Headless Chromium + virtual authenticator through a real proxy |
+| `src/main.cpp` | Serve, or `owner` |
 | `docs/proxies.md` | Caddy, Traefik, nginx, Envoy and HAProxy recipes |

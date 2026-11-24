@@ -1,17 +1,11 @@
 # Proxy recipes
 
-Every gated host needs two things from the proxy:
+Every app host needs two rules: `/.durin/*` goes to Durin, and everything else asks Durin first. The sign-in host just goes to Durin. Pass the `Host` header through unchanged.
 
-1. `/.durin/*` goes to Durin, ungated (the one-time code callback lands there).
-2. Everything else asks Durin first (forward auth) and passes the user header on to the app.
-
-The auth host itself is proxied to Durin and never gated. Durin answers only on loopback by default, and believes forwarding headers only from `REVET_TRUSTED_PROXIES`.
-
-Caddy, nginx, Traefik, Envoy and HAProxy configs below were each run against the browser test (37 checks). Examples use `auth.example.com` as `DURIN_AUTH_HOST`, apps under `*.example.com`, and Durin on `127.0.0.1:3130`.
+`install.sh` prints these with your host name filled in.
 
 ## Caddy
 
-`DURIN_PROXY=forwarded` (the default).
 
 ```caddy
 (durin) {
@@ -34,7 +28,11 @@ app.example.com {
 }
 ```
 
-`route { }` keeps the callback ahead of `forward_auth`. With a private suffix and `tls internal`, issue certificates per host on first visit and let Durin approve the names:
+`route { }` keeps the callback ahead of `forward_auth`.
+
+## Caddy with a private suffix
+
+With a private suffix (such as `.home`) and `tls internal`, issue certificates per host on first visit and let Durin approve the names:
 
 ```caddy
 {
@@ -53,7 +51,7 @@ app.example.com {
 
 ## Traefik
 
-`DURIN_PROXY=forwarded` (the default). ForwardAuth sets `X-Forwarded-Host` and `X-Forwarded-Uri` itself.
+ForwardAuth sets `X-Forwarded-Host` and `X-Forwarded-Uri` itself.
 
 ```yaml
 http:
@@ -86,7 +84,7 @@ http:
 
 ## nginx
 
-`DURIN_PROXY=original`. `auth_request` accepts only 2xx, 401 and 403, so it calls `/.durin/auth-request`, which answers 401 with the sign-in address in `Location`. Set `X-Original-URL` on every location that reaches Durin, so a client cannot supply its own.
+`auth_request` accepts only 2xx, 401 and 403, so it calls `/.durin/auth-request`, which answers 401 with the sign-in address in `Location`.
 
 ```nginx
 server {
@@ -95,7 +93,6 @@ server {
     location / {
         proxy_pass http://127.0.0.1:3130;
         proxy_set_header Host $host;
-        proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
         proxy_set_header X-Forwarded-For $remote_addr;
     }
 }
@@ -107,7 +104,6 @@ server {
     location /.durin/ {
         proxy_pass http://127.0.0.1:3130;
         proxy_set_header Host $host;
-        proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
         proxy_set_header X-Forwarded-For $remote_addr;
     }
 
@@ -135,7 +131,7 @@ Don't answer a gated location with `return`: it runs before `auth_request` and s
 
 ## Envoy
 
-`DURIN_PROXY=forwarded` (the default). Uses the `ext_authz` HTTP filter. Envoy appends the original path to `path_prefix` and sends no original-URL header of its own, so the config adds `X-Forwarded-Host` and `X-Forwarded-Uri` from Envoy's own view of the request (a client's copies are never sent to Durin). Durin answers `GET /.durin/verify/<path>` for this.
+Uses the `ext_authz` HTTP filter. Envoy appends the original path to `path_prefix` and sends no original-URL header of its own, so the config adds `X-Forwarded-Host` and `X-Forwarded-Uri` from Envoy's own view of the request (a client's copies are never sent to Durin). Durin answers `GET /.durin/verify/<path>` for this.
 
 ```yaml
 http_filters:
@@ -161,7 +157,7 @@ Routes: `auth.example.com` and the `/.durin/` prefix on every app host go to the
 
 ## HAProxy
 
-`DURIN_PROXY=original`. HAProxy has no forward-auth directive; it needs a Lua build (`haproxy -vv` shows `+LUA`; Homebrew's bottle lacks it, the official Docker images have it). The script asks Durin about each request and either passes the user on or answers the browser itself.
+HAProxy has no forward-auth directive; it needs a Lua build (`haproxy -vv` shows `+LUA`; Homebrew's bottle lacks it, the official Docker images have it). The script asks Durin about each request and either passes the user on or answers the browser itself.
 
 `durin.lua`:
 
@@ -230,12 +226,3 @@ backend app
 | Nginx Proxy Manager, SWAG, other nginx wrappers | Use the nginx recipe (their "advanced" or custom-location box); not tested |
 | Apache httpd | No built-in forward auth (needs a third-party module); no recipe |
 | Anything that can call an HTTP URL per request, copy a response header to the app and relay a `Location` | Works if it can send either header style above |
-
-## Settings that touch the proxy
-
-| Setting | Default | Meaning |
-|---|---|---|
-| `DURIN_PROXY` | `forwarded` | Which headers name the original request: `X-Forwarded-Host` + `X-Forwarded-Uri`, or `original` for `X-Original-URL` |
-| `DURIN_USER_HEADER` | `Remote-User` | Header on a 200 from verify; copy it to the app |
-| `REVET_TRUSTED_PROXIES` | `127.0.0.1,::1` (serve.sh) | Peers whose forwarding headers count; others get their own `Host` |
-| `REVET_BIND` | `127.0.0.1` (serve.sh) | Listen address |

@@ -1,5 +1,5 @@
-// Passkey sign-in, first-account setup and "add a passkey". No libraries.
-// Buttons carry data-durin="signin" | "setup" | "join" | "add" | "copy"; messages go to #durin-status.
+// Passkey sign-in, joining by link and "add a passkey". No libraries.
+// Buttons carry data-durin="signin" | "join" | "add" | "copy"; messages go to #durin-status.
 (function () {
   "use strict";
 
@@ -32,8 +32,7 @@
   }
 
   const reasons = {
-    setup_code: "Wrong setup code.",
-    invite: "This invite link was used, cancelled or has expired.",
+    invite: "This link was used, cancelled or has expired.",
     bad_name: "Name: lower-case letters, digits, . _ - only.",
     name_taken: "That name is taken.",
     credential_taken: "That passkey is already registered.",
@@ -92,9 +91,8 @@
       if (kind === "signin") {
         await signIn();
         location.reload(); // keeps ?rd=, so the server sends us on to the app
-      } else if (kind === "setup" || kind === "join") {
-        await register(kind === "setup" ? { name: val("setup-name"), setup_code: val("setup-code") }
-                                        : { name: val("setup-name"), invite: val("invite-code") });
+      } else if (kind === "join") {
+        await register({ name: val("join-name"), invite: val("invite-code") });
         location.reload(); // keeps ?rd=; a used ?invite= is ignored once signed in
       } else {
         await register({});

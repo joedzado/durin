@@ -1,0 +1,13 @@
+#!/bin/sh
+# Run Durin with the settings in .env.local.   ./durin         serve
+#                                              ./durin owner   print a link that makes an owner account
+cd "$(dirname "$0")" || exit 1
+set -a
+[ -f .env.local ] && . ./.env.local
+REVET_BIND="${REVET_BIND:-127.0.0.1}"
+REVET_TRUSTED_PROXIES="${REVET_TRUSTED_PROXIES:-127.0.0.1,::1}" # whose X-Forwarded-For the rate limits believe
+REVET_FORCE_SECURE_COOKIES=1
+REVET_REQUIRE_COOKIE_KEY=1
+set +a
+mkdir -p data && chmod 700 data
+exec ./build/revet "$@" --port "${DURIN_PORT:-3130}"

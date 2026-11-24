@@ -3,7 +3,7 @@
 // the proxy's certificate by its public key (pass the intermediate, or a self-signed leaf; Chromium
 // ignores the flag for a root), so this needs no DNS or keychain changes.
 //
-//   DURIN_SETUP_CODE=... DURIN_AUTH_HOST=auth.example.com E2E_APPS=a.example.com,b.example.com,c.example.com \
+//   OWNER_LINK=$(./durin owner) DURIN_AUTH_HOST=auth.example.com E2E_APPS=a.example.com,b.example.com,c.example.com \
 //     node tests/e2e/durin_browser.mjs <chromium> <cert.pem> [proxy address[:port], default 127.0.0.1]
 //
 // E2E_APPS: three gated app hosts behind the proxy (the third only gets a forged code, from a stranger).
@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const [, , CHROME, CA_CRT, ADDR = "127.0.0.1"] = process.argv;
-const SETUP = process.env.DURIN_SETUP_CODE || "";
+const OWNER_LINK = process.env.OWNER_LINK || "";
 const AUTH = process.env.DURIN_AUTH_HOST || "";
 const [APP1, APP2, APP3] = (process.env.E2E_APPS || "").split(",");
 if (!AUTH || !APP3) { console.log("set DURIN_AUTH_HOST and E2E_APPS (three hosts)"); process.exit(2); }
@@ -79,20 +79,17 @@ try {
   check((await ev("location.search")).includes(encodeURIComponent(`https://${APP1}/review?x=1`)), "with the original address in rd");
   check(await ev(`typeof PublicKeyCredential === "function"`), `${AUTH} is a secure context with WebAuthn (cert trusted)`);
 
-  // 2. Sign-up needs the setup code
-  check(await ev(`!!document.querySelector("[data-durin=setup]")`), "empty database: setup form shown");
-  check(await ev(`document.getElementById("setup-name").value`) === "", "the first-account form has no preset name");
-  await ev(`document.getElementById("setup-name").value = "owner"`);
-  await ev(`document.getElementById("setup-code").value = "wrong"`);
-  await ev(`document.querySelector("[data-durin=setup]").click()`);
-  await until(`document.getElementById("durin-status").textContent.includes("setup code")`, "wrong code message");
-  check((await status()).includes("Wrong setup code"), "a wrong setup code is refused", `status="${await status()}"`);
-  check((await cdp("WebAuthn.getCredentials", { authenticatorId })).credentials.length === 0, "and no passkey was made");
+  // 2. Sign-up needs a link
+  check(!(await ev(`!!document.querySelector("[data-durin=join]")`)), "no sign-up without a link");
 
-  // 3. First account, then straight on to the app
-  await ev(`document.getElementById("setup-code").value = ${JSON.stringify(SETUP)}`);
-  await ev(`document.querySelector("[data-durin=setup]").click()`);
-  check(await until(`location.host === "${APP1}"`, `back on ${APP1}`), `creating the passkey signs in and returns to ${APP1}`, await here());
+  // 3. The owner link makes the first account; then straight on to the app
+  await goto(OWNER_LINK);
+  check(await ev(`document.getElementById("join-name").value`) === "", "the owner link shows an empty new-account form");
+  await ev(`document.getElementById("join-name").value = "owner"`);
+  await ev(`document.querySelector("[data-durin=join]").click()`);
+  check(await until(`document.body.innerText.includes("Signed in as owner")`, "owner signed in"), "the owner link makes an account and signs it in", await status());
+  await goto(`https://${APP1}/review?x=1`);
+  check(await until(`location.host === "${APP1}"`, `back on ${APP1}`), `one sign-in opens ${APP1}`, await here());
   check(await ev("location.pathname + location.search") === "/review?x=1", "at the original path", await ev("location.pathname + location.search"));
   const fc = (await cookies(`https://${APP1}/`)).find((c) => c.name === "__Host-durin");
   check(!!fc && fc.secure && fc.httpOnly && fc.domain === `${APP1}` && fc.session, `${APP1} has a host-only Secure HttpOnly session cookie`, JSON.stringify(fc && { d: fc.domain, s: fc.secure, h: fc.httpOnly, session: fc.session }));
@@ -122,7 +119,7 @@ try {
   check(await ev("location.host") === `${AUTH}`, `after sign-out, ${APP1}'s old cookie no longer works`, await here());
 
   // 8. Sign in with the passkey, remembered
-  check(!(await ev(`!!document.querySelector("[data-durin=setup]")`)), "setup form gone once an account exists");
+  check(!(await ev(`!!document.querySelector("[data-durin=join]")`)), "still no sign-up without a link");
   await ev(`document.getElementById("remember").checked = true`);
   const before = (await cdp("WebAuthn.getCredentials", { authenticatorId })).credentials[0]?.signCount ?? -1;
   await ev(`document.querySelector("[data-durin=signin]").click()`);
@@ -167,12 +164,14 @@ try {
   check(await gev("location.host") === AUTH, "a forged code sends a stranger to sign in", await gev("location.host"));
   check((await gcdp("Network.getCookies", { urls: [`https://${APP3}/`] })).cookies.every((c) => c.name !== "__Host-durin"), "and sets no cookie");
   await ggoto(`https://${AUTH}/`);
-  check(!(await gev(`!!document.querySelector("[data-durin=setup], [data-durin=join]")`)), "no sign-up form without an invite");
-  check(await gpost("/passkey/register/options", { name: "late", setup_code: SETUP }) === 403, "the setup code no longer makes accounts");
+  check(!(await gev(`!!document.querySelector("[data-durin=join]")`)), "no sign-up form without an invite");
+  check(await gpost("/passkey/register/options", { name: "late" }) === 403, "no account without a link");
+  await ggoto(OWNER_LINK);
+  check(await gev(`document.body.textContent.includes("was used")`), "the owner link works only once");
   check(await gpost("/passkey/register/options", { name: "late", invite: "forged" }) === 403, "a forged invite is refused");
   await ggoto(link);
   check(await gev(`!!document.querySelector("[data-durin=join]")`), "the invite link shows the new-account form");
-  await gev(`document.getElementById("setup-name").value = "guest"`);
+  await gev(`document.getElementById("join-name").value = "guest"`);
   await gev(`document.querySelector("[data-durin=join]").click()`);
   check(await guntil(`document.querySelector("h1")?.textContent === "Signed in as guest"`, "guest signed in"), "the invite makes an account and signs it in");
   check(!(await gev(`!!document.getElementById("owner-panel")`)), "an invited account is not an owner");

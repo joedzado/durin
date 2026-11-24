@@ -25,6 +25,5 @@ static auto render_get(const web::Request& req) -> web::Response {
     if (who) return layout_main(req, "Durin", account_page(req, who->user_id, who->name, who->parent_id));
     const auto for_host = target ? target->host : std::string();
     const auto invite = req.query.get("invite");
-    const bool setup = durin::owner_count(h) == 0 && !durin::settings().setup_code.empty();
-    return layout_main(req, "Sign in", sign_in_page(req, for_host, setup, invite, durin::invite_ok(h, invite)));
+    return layout_main(req, "Sign in", sign_in_page(req, for_host, invite, durin::invite_ok(h, invite), durin::is_owner_link(h, invite)));
 }

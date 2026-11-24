@@ -5,15 +5,14 @@
 #include "durin.hpp"
 
 // POST /passkey/register/options: another passkey for the signed-in user, or a new account with an
-// owner's invite (or, while there are no accounts, the setup code).
+// one-use link.
 static auto render_post(const web::Request& req) -> web::Response {
     namespace pk = web::auth::passkeys;
     if (durin::request_host(req) != durin::settings().auth_host) return web::api::error(web::status::not_found, "not_found");
-    std::string name, code, invite;
+    std::string name, invite;
     try {
         revet::json::Document doc(req.raw_body);
         name = durin::lower(doc.root().get("name", ""));
-        code = doc.root().get("setup_code", "");
         invite = doc.root().get("invite", "");
     } catch (const std::exception&) {
         return web::api::error(web::status::bad_request, "bad_request");
@@ -22,10 +21,7 @@ static auto render_post(const web::Request& req) -> web::Response {
     auto h = resources::main_db<db::Write>();
     const auto who = durin::auth_session(h, req);
     if (!who) {
-        const bool first = durin::owner_count(h) == 0 && durin::setup_code_ok(code);
-        if (!first && !durin::invite_ok(h, invite)) {
-            return web::api::error(web::status::forbidden, invite.empty() ? "setup_code" : "invite");
-        }
+        if (!durin::invite_ok(h, invite)) return web::api::error(web::status::forbidden, "invite");
         if (!durin::valid_name(name)) return web::api::error(web::status::bad_request, "bad_name");
         if (durin::name_taken(h, name)) return web::api::error(web::status::conflict, "name_taken");
     }

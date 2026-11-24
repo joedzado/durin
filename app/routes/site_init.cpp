@@ -50,8 +50,7 @@ void site_init() {
 
     const auto& s = durin::settings();
     if (s.auth_host.empty() || s.suffix.empty() || !s.auth_host.ends_with("." + s.suffix)) {
-        log::error("durin: set DURIN_AUTH_HOST (e.g. auth.example.com), and DURIN_SUFFIX if apps are not its siblings");
-        std::exit(1);
+        throw web::StartupError("set DURIN_AUTH_HOST (e.g. auth.example.com), and DURIN_SUFFIX if apps are not its siblings", 1);
     }
     auto& pk = web::auth::passkeys::config();
     pk.rp_name = "Durin";
@@ -59,7 +58,5 @@ void site_init() {
     pk.rp.origins = {"https://" + s.auth_host};
     pk.rp.require_user_verification = true;
     pk.app_link_paths.clear();
-    log::info("durin: auth host {}, app hosts *.{}, proxy headers {}, {} account(s){}", s.auth_host, s.suffix,
-              s.original_url ? "X-Original-URL" : "X-Forwarded-*", durin::user_count(h),
-              durin::owner_count(h) == 0 && !s.setup_code.empty() ? ", the setup code makes an owner" : "");
+    log::info("durin: auth host {}, app hosts *.{}, {} account(s)", s.auth_host, s.suffix, durin::user_count(h));
 }

@@ -40,45 +40,27 @@ html::Node passkey_list(std::string_view user_id) {
         })};
 }
 
-static auto new_account_form(std::string_view title, std::string_view default_name, std::string_view kind, html::Node secret) -> html::Node {
+static auto join_form(std::string_view invite, bool live, bool owner) -> html::Node {
+    if (invite.empty()) return html::Node{};
+    if (!live) return html::p{styles::meta, "This link was used, cancelled or has expired. Ask for a new one."};
     return html::div{styles::setup,
-        html::h2{styles::subheading, std::string(title)},
-        html::label{styles::field, "Name", html::input{html::attr.type("text"), html::attr.id("setup-name"),
-                                                        html::attr.value(std::string(default_name)), html::attr.autocomplete("username")}},
-        secret,
-        html::button{styles::btn, html::attr.type("button"), html::attr("data-durin", std::string(kind)), "Create a passkey"}};
+        html::h2{styles::subheading, owner ? "Make the owner account" : "You're invited: make an account"},
+        html::label{styles::field, "Name", html::input{html::attr.type("text"), html::attr.id("join-name"), html::attr.autocomplete("username")}},
+        html::input{html::attr.type("hidden"), html::attr.id("invite-code"), html::attr.value(std::string(invite))},
+        html::button{styles::btn, html::attr.type("button"), html::attr("data-durin", "join"), "Create a passkey"}};
 }
 
-// What the sign-in page offers besides signing in.
-enum class Join { none, setup, invite, spent };
-
-static auto join_form(Join join, std::string_view invite) -> html::Node {
-    switch (join) {
-    case Join::setup:
-        return new_account_form("First account (owner)", "", "setup",
-            html::label{styles::field, "Setup code", html::input{html::attr.type("password"), html::attr.id("setup-code"), html::attr.autocomplete("off")}});
-    case Join::invite:
-        return new_account_form("You're invited: make an account", "", "join",
-            html::input{html::attr.type("hidden"), html::attr.id("invite-code"), html::attr.value(std::string(invite))});
-    case Join::spent:
-        return html::p{styles::meta, "This invite link was used, cancelled or has expired. Ask for a new one."};
-    case Join::none: break;
-    }
-    return html::Node{};
-}
-
-// Signed out. `for_host` names the app that sent the visitor here, if any. `setup`: no accounts yet, so
-// offer the owner's first account. `invite`: the ?invite= code, live or not per `invite_live`.
+// Signed out. `for_host` names the app that sent the visitor here, if any. `invite`: the ?invite= code,
+// `live` or not, and whether it makes an `owner`.
 [[revet::export]]
-html::Node sign_in_page(const web::Request& req, std::string_view for_host, bool setup, std::string_view invite, bool invite_live) {
-    const auto join = setup ? Join::setup : invite.empty() ? Join::none : invite_live ? Join::invite : Join::spent;
+html::Node sign_in_page(const web::Request& req, std::string_view for_host, std::string_view invite, bool live, bool owner) {
     return html::div{styles::card, html::attr("data-csrf", web::csrf::token_from(req)),
         html::h1{styles::heading, "Speak, friend, and enter"},
         for_host.empty() ? html::Node{} : html::Node(html::p{styles::meta, "Sign in to continue to ", html::strong{std::string(for_host)}, "."}),
         html::button{styles::btn, styles::btn_main, html::attr.type("button"), html::attr("data-durin", "signin"), "Sign in with a passkey"},
         html::label{styles::check, html::input{html::attr.type("checkbox"), html::attr.id("remember")}, " Remember me for a month"},
         status_line(),
-        join_form(join, invite),
+        join_form(invite, live, owner),
         scripts::durin_tag()};
 }
 

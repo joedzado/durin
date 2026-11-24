@@ -28,7 +28,6 @@
 
 #include <revet/auth/users.hpp>
 #include <revet/crypto.hpp>
-#include <revet/rate_limit.hpp>
 #include <revet/sanitize.hpp>
 #include <revet/web.hpp>
 #include <revet/webauthn.hpp>
@@ -39,15 +38,13 @@ struct Settings {
     std::string auth_host;                // DURIN_AUTH_HOST (required): where sign-in happens, the passkey RP ID
     std::string suffix;                   // DURIN_SUFFIX: app hosts are <name>.<suffix>; default: the auth host
                                           // without its first label
-    bool original_url = false;            // DURIN_PROXY: "forwarded" (default; X-Forwarded-Host/-Uri: Caddy,
-                                          // Traefik) or "original" (X-Original-URL: nginx)
     std::string user_header = "Remote-User"; // DURIN_USER_HEADER: the header verify answers with the account name
-    std::string setup_code;               // DURIN_SETUP_CODE: creates an owner while there is none; ignored otherwise
     long long idle_seconds = 5 * 60;      // DURIN_IDLE_SECONDS: unremembered sign-in ends after this much quiet
     long long max_seconds = 12 * 3600;    // DURIN_MAX_SECONDS: ... and after this long in any case
     long long remember_seconds = 30 * 86400; // DURIN_REMEMBER_SECONDS: "remember me" lasts this long
     long long code_seconds = 60;          // one-time code lifetime
     long long invite_seconds = 7 * 86400; // an invite link lasts this long, for one account
+    long long owner_link_seconds = 3600;  // an owner link lasts this long
     long long touch_seconds = 15;         // write last_seen at most this often
 };
 
@@ -72,16 +69,12 @@ inline auto settings() -> const Settings& {
         text("DURIN_AUTH_HOST", c.auth_host);
         text("DURIN_SUFFIX", c.suffix);
         text("DURIN_USER_HEADER", c.user_header);
-        std::string proxy;
-        text("DURIN_PROXY", proxy);
-        c.original_url = proxy == "original";
         for (auto* v : {&c.auth_host, &c.suffix}) {
             std::ranges::transform(*v, v->begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
         }
         if (c.suffix.empty()) {
             if (const auto dot = c.auth_host.find('.'); dot != std::string::npos) c.suffix = c.auth_host.substr(dot + 1);
         }
-        text("DURIN_SETUP_CODE", c.setup_code);
         number("DURIN_IDLE_SECONDS", c.idle_seconds);
         number("DURIN_MAX_SECONDS", c.max_seconds);
         number("DURIN_REMEMBER_SECONDS", c.remember_seconds);
@@ -104,9 +97,9 @@ inline auto strip_port(std::string h) -> std::string {
     return lower(h);
 }
 
-// Forwarding headers count only from a proxy in REVET_TRUSTED_PROXIES; anyone else gets their Host.
-inline auto from_trusted_proxy(const web::Request& req) -> bool {
-    return !req.peer_ip.empty() && web::rate_limit::trusted_proxies().contains(req.peer_ip);
+// The host the browser asked for, without a port. Proxies pass Host through (docs/proxies.md).
+inline auto request_host(const web::Request& req) -> std::string {
+    return strip_port(req.headers.get("host"));
 }
 
 struct Original {
@@ -114,33 +107,26 @@ struct Original {
     std::string path; // path and query as sent; callers check it with is_local_path
 };
 
-// The request the browser made, which a forward-auth request is asking about. Only the headers of the
-// configured proxy style are read, so a client cannot slip in the other style's header:
-//   forwarded: X-Forwarded-Host + X-Forwarded-Uri (Caddy and Traefik set both on forward auth, and
-//              X-Forwarded-Host on proxied requests)
-//   original:  X-Original-URL: <scheme>://<host><path> (nginx, as the recipe sets it on every location)
-// Without them (or from an untrusted peer): the Host header and the request's own path.
-inline auto original(const web::Request& req, const Settings& s = settings()) -> Original {
-    Original o{strip_port(req.headers.get("host")), ""};
-    if (!from_trusted_proxy(req)) return o;
-    if (s.original_url) {
-        const std::string url = req.headers.get("x-original-url");
-        const auto sep = url.find("://");
-        if (sep == std::string::npos) return o;
-        const auto rest = std::string_view(url).substr(sep + 3);
-        const auto slash = rest.find('/');
-        const auto authority = rest.substr(0, slash);
-        if (authority.empty() || authority.contains('@')) return o;
-        return {strip_port(std::string(authority)), slash == std::string_view::npos ? "/" : std::string(rest.substr(slash))};
-    }
-    if (auto h = req.headers.get("x-forwarded-host"); !h.empty()) o.host = strip_port(h);
-    o.path = req.headers.get("x-forwarded-uri");
-    return o;
+// The browser's request that a forward-auth request asks about. Each endpoint reads only its own headers,
+// which its proxies always overwrite, so a client cannot slip in the other style's. No trusted-proxy check
+// is needed: the answer goes to whoever asked, so forging these headers gains nothing.
+
+// /.durin/verify (Caddy, Traefik, Envoy): X-Forwarded-Host and X-Forwarded-Uri.
+inline auto original_forwarded(const web::Request& req) -> Original {
+    const auto h = req.headers.get("x-forwarded-host");
+    return {h.empty() ? request_host(req) : strip_port(h), req.headers.get("x-forwarded-uri")};
 }
 
-// The host the browser asked for, without a port.
-inline auto request_host(const web::Request& req) -> std::string {
-    return original(req).host;
+// /.durin/auth-request (nginx, HAProxy): X-Original-URL: <scheme>://<host><path>. Anything else: no host.
+inline auto original_url(const web::Request& req) -> Original {
+    const std::string url = req.headers.get("x-original-url");
+    const auto sep = url.find("://");
+    if (sep == std::string::npos) return {};
+    const auto rest = std::string_view(url).substr(sep + 3);
+    const auto slash = rest.find('/');
+    const auto authority = rest.substr(0, slash);
+    if (authority.contains('@')) return {};
+    return {strip_port(std::string(authority)), slash == std::string_view::npos ? "/" : std::string(rest.substr(slash))};
 }
 
 // <label>(.<label>)*.<suffix>, DNS characters only, and not the auth host.
@@ -210,10 +196,6 @@ inline auto hash(std::string_view token) -> std::string {
     return hex;
 }
 
-inline auto setup_code_ok(std::string_view given, const Settings& s = settings()) -> bool {
-    return !s.setup_code.empty() && !given.empty() && web::crypto::secure_eq(given, s.setup_code);
-}
-
 inline auto now() -> long long {
     return web::auth::detail::now();
 }
@@ -231,10 +213,16 @@ void create_schema(H& h) {
     if (h.template scalar<long long>("SELECT COUNT(*) FROM pragma_table_info('durin_users') WHERE name = 'owner'").value_or(0) == 0) {
         h.exec("ALTER TABLE durin_users ADD COLUMN owner SMALLINT NOT NULL DEFAULT 0");
     }
+    // Links are short-lived, so a table from before owner links is simply replaced.
+    if (h.template scalar<long long>("SELECT COUNT(*) FROM pragma_table_info('durin_invites') WHERE name = 'owner'").value_or(0) == 0) {
+        h.exec("DROP TABLE IF EXISTS durin_invites");
+    }
+    // created_by NULL: an owner link made on the server's command line.
     h.exec("CREATE TABLE IF NOT EXISTS durin_invites ("
            " id TEXT PRIMARY KEY,"
            " code_hash TEXT NOT NULL UNIQUE,"
-           " created_by TEXT NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,"
+           " created_by TEXT REFERENCES auth_users(id) ON DELETE CASCADE,"
+           " owner SMALLINT NOT NULL DEFAULT 0,"
            " created_at BIGINT NOT NULL,"
            " expires_at BIGINT NOT NULL)");
     // parent_id NULL: a sign-in at the auth host. Otherwise: an app host's session under that sign-in.
@@ -269,7 +257,6 @@ auto user_count(H& h) -> long long {
     return h.template scalar<long long>("SELECT COUNT(*) FROM durin_users").value_or(0);
 }
 
-// The owner makes accounts by invite. While there is no owner, the setup code makes one.
 template<typename H>
 auto owner_count(H& h) -> long long {
     return h.template scalar<long long>("SELECT COUNT(*) FROM durin_users WHERE owner = 1").value_or(0);
@@ -438,8 +425,8 @@ auto hosts_of(H& h, std::string_view parent_id) -> std::vector<HostSession> {
 }
 
 // ── owners, people and invites ───────────────────────────────────────────────
-// The first account (made with the setup code) is the owner. After that, only an owner's invite link
-// makes an account; anyone signed in may add passkeys to their own account only.
+// Only a one-use link makes an account: an owner link (`owner` on the server's command line) makes an
+// owner, an owner's invite makes anyone else; anyone signed in may add passkeys to their own account only.
 
 template<typename H>
 auto is_owner(H& h, std::string_view user_id) -> bool {
@@ -478,14 +465,30 @@ auto remove_person(H& h, std::string_view user_id, long long t = now()) -> bool 
     return web::auth::delete_user(h, user_id);
 }
 
+enum class Link : std::uint8_t { member, owner };
+
+template<typename H>
+auto mint_link(H& h, Link kind, std::optional<std::string> by, long long lifetime, long long t) -> std::string {
+    h.exec("DELETE FROM durin_invites WHERE expires_at < ?", t);
+    const auto code = random_token();
+    h.exec("INSERT INTO durin_invites (id, code_hash, created_by, owner, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)", random_id(),
+           hash(code), by, kind == Link::owner ? 1 : 0, t, t + lifetime);
+    return code;
+}
+
+// A one-use code that makes an owner. Only the server's command line calls this. A new one replaces
+// the last, so there is never more than one open.
+template<typename H>
+auto mint_owner_link(H& h, const Settings& s = settings(), long long t = now()) -> std::string {
+    h.exec("DELETE FROM durin_invites WHERE owner = 1");
+    return mint_link(h, Link::owner, std::nullopt, s.owner_link_seconds, t);
+}
+
+
 // A one-use link code for one new account. Only its hash is stored.
 template<typename H>
 auto mint_invite(H& h, std::string_view by, const Settings& s = settings(), long long t = now()) -> std::string {
-    h.exec("DELETE FROM durin_invites WHERE expires_at < ?", t);
-    const auto code = random_token();
-    h.exec("INSERT INTO durin_invites (id, code_hash, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?)", random_id(), hash(code),
-           std::string(by), t, t + s.invite_seconds);
-    return code;
+    return mint_link(h, Link::member, std::string(by), s.invite_seconds, t);
 }
 
 template<typename H>
@@ -495,12 +498,21 @@ auto invite_ok(H& h, std::string_view code, long long t = now()) -> bool {
                .value_or(0) > 0;
 }
 
-// Spend an invite. False if it was already used, revoked or expired.
+// Whether a live link makes an owner (for the page's wording).
 template<typename H>
-auto take_invite(H& h, std::string_view code, long long t = now()) -> bool {
-    if (code.empty() || code.size() > 128) return false;
-    return !h.template query_as<std::string>("DELETE FROM durin_invites WHERE code_hash = ? AND expires_at > ? RETURNING id", hash(code), t)
-                .empty();
+auto is_owner_link(H& h, std::string_view code, long long t = now()) -> bool {
+    return h.template scalar<long long>("SELECT COUNT(*) FROM durin_invites WHERE code_hash = ? AND owner = 1 AND expires_at > ?", hash(code), t)
+               .value_or(0) > 0;
+}
+
+// Spend a link: what account it makes, or nothing if it was used, cancelled or has expired.
+template<typename H>
+auto take_invite(H& h, std::string_view code, long long t = now()) -> std::optional<Link> {
+    if (code.empty() || code.size() > 128) return std::nullopt;
+    const auto rows = h.template query_as<std::string, long long>(
+        "DELETE FROM durin_invites WHERE code_hash = ? AND expires_at > ? RETURNING id, owner", hash(code), t);
+    if (rows.empty()) return std::nullopt;
+    return std::get<1>(rows.front()) != 0 ? Link::owner : Link::member;
 }
 
 struct Invite {
@@ -515,7 +527,7 @@ auto open_invites(H& h, long long t = now()) -> std::vector<Invite> {
     std::vector<Invite> out;
     for (auto& [id, by, created, expires] : h.template query_as<std::string, std::string, long long, long long>(
              "SELECT i.id, COALESCE(u.name, ''), i.created_at, i.expires_at FROM durin_invites i"
-             " LEFT JOIN durin_users u ON u.user_id = i.created_by WHERE i.expires_at > ? ORDER BY i.created_at DESC",
+             " LEFT JOIN durin_users u ON u.user_id = i.created_by WHERE i.owner = 0 AND i.expires_at > ? ORDER BY i.created_at DESC",
              t)) {
         out.push_back({std::move(id), std::move(by), created, expires});
     }
@@ -566,7 +578,7 @@ inline auto start_url(std::string_view host, std::string_view path) -> std::stri
 // proxies that only take 2xx/401/403 (nginx auth_request), as a 401 carrying Location.
 template<typename H>
 auto verify(H& h, const web::Request& req, bool redirect) -> web::Response {
-    const auto o = original(req);
+    const auto o = redirect ? original_forwarded(req) : original_url(req);
     if (!is_app_host(o.host)) {
         return web::Response{.body = "not a gated host", .content_type = "text/plain", .status = web::status::forbidden};
     }

@@ -17,9 +17,7 @@ using W = db::sqlite::Handle<db::Write>;
 
 // The environment is read once, on first use: set it before any test runs.
 [[maybe_unused]] const int env_ready = [] {
-    setenv("REVET_TRUSTED_PROXIES", "127.0.0.1", 1);
     setenv("DURIN_AUTH_HOST", "auth.example.test", 1);
-    setenv("DURIN_PROXY", "forwarded", 1);
     return 0;
 }();
 
@@ -70,6 +68,14 @@ auto proxied(const std::string& host, const std::string& uri, const std::string&
     return req;
 }
 
+// A request as nginx's auth_request would send it.
+auto asked_url(const std::string& url) -> web::Request {
+    web::Request req;
+    req.headers.data["host"] = "127.0.0.1:3130";
+    req.headers.data["x-original-url"] = url;
+    return req;
+}
+
 } // namespace
 
 TEST_CASE("app hosts are DNS names under the suffix, never the auth host") {
@@ -117,30 +123,21 @@ TEST_CASE("a sign-in return address is an https app host or nothing") {
     }
 }
 
-TEST_CASE("the original request comes only from the configured proxy style and a trusted peer") {
-    auto fwd = settings();
-    auto orig = settings();
-    orig.original_url = true;
+TEST_CASE("each forward-auth endpoint reads only its own headers") {
+    auto req = proxied("a.example.test:8443", "/p?q=1");
+    req.headers.data["x-original-url"] = "https://b.example.test:8443/other?x=1";
+    CHECK(durin::original_forwarded(req).host == "a.example.test");
+    CHECK(durin::original_forwarded(req).path == "/p?q=1");
+    CHECK(durin::original_url(req).host == "b.example.test");
+    CHECK(durin::original_url(req).path == "/other?x=1");
+    CHECK(durin::request_host(req) == "127.0.0.1"); // pages and the callback go by Host alone
 
-    auto req = proxied("a.example.test", "/p?q=1");
-    req.headers.data["x-original-url"] = "https://b.example.test/other";
-    CHECK(durin::original(req, fwd).host == "a.example.test");
-    CHECK(durin::original(req, fwd).path == "/p?q=1");
-    CHECK(durin::original(req, orig).host == "b.example.test"); // each style reads only its own headers
-    CHECK(durin::original(req, orig).path == "/other");
-
-    auto port = proxied("a.example.test:8443", "/");
-    CHECK(durin::original(port, fwd).host == "a.example.test");
-
-    auto userinfo = proxied("a.example.test", "/");
-    userinfo.headers.data["x-original-url"] = "https://a.example.test@evil.com/";
-    CHECK(durin::original(userinfo, orig).host == "127.0.0.1"); // falls back to Host
-
-    auto stranger = proxied("a.example.test", "/p");
-    stranger.peer_ip = "203.0.113.9";
-    stranger.headers.data["host"] = "evil.com";
-    CHECK(durin::original(stranger, fwd).host == "evil.com");
-    CHECK(durin::original(stranger, fwd).path.empty());
+    req.headers.data["x-original-url"] = "https://b.example.test";
+    CHECK(durin::original_url(req).path == "/");
+    for (const char* bad : {"", "b.example.test/x", "https://b.example.test@evil.com/"}) {
+        req.headers.data["x-original-url"] = bad;
+        CHECK(durin::original_url(req).host.empty());
+    }
 }
 
 TEST_CASE("names are lower-case labels that are safe as a header value") {
@@ -271,7 +268,7 @@ TEST_CASE("an invite makes one account, once, for a week, and is stored hashed")
     CHECK(durin::invite_ok(h, code, t + 1));
     CHECK(h.scalar<long long>("SELECT COUNT(*) FROM durin_invites WHERE code_hash = ?", code).value_or(-1) == 0);
     CHECK(durin::open_invites(h, t + 1).size() == 1);
-    CHECK(durin::take_invite(h, code, t + 2));
+    CHECK(durin::take_invite(h, code, t + 2) == durin::Link::member);
     CHECK_FALSE(durin::take_invite(h, code, t + 3));
     CHECK_FALSE(durin::invite_ok(h, code, t + 3));
 
@@ -331,7 +328,7 @@ TEST_CASE("forward auth: sign-in redirect, 401 for nginx, the user header, and n
     CHECK(none.status.code == 302);
     CHECK(none.location == "https://a.example.test/.durin/start?rd=%2Fp%3Fq%3D1"); // sign-in starts on the app host
 
-    const auto no = durin::verify(h, proxied("a.example.test", "/p"), false);
+    const auto no = durin::verify(h, asked_url("https://a.example.test/p"), false);
     CHECK(no.status.code == 401);
     CHECK(no.headers.get("Location") == "https://a.example.test/.durin/start?rd=%2Fp");
 
@@ -342,10 +339,9 @@ TEST_CASE("forward auth: sign-in redirect, 401 for nginx, the user header, and n
     CHECK(durin::verify(h, proxied("auth.example.test", "/"), true).status.code == 403); // the auth host is never gated
     CHECK(durin::verify(h, proxied("example.test", "/"), true).status.code == 403);
 
-    auto stranger = proxied("a.example.test", "/");
-    stranger.peer_ip = "203.0.113.9";
-    stranger.headers.data["host"] = "evil.com";
-    CHECK(durin::verify(h, stranger, true).status.code == 403); // forged forwarding headers from an untrusted peer
+    // The other style's headers do not count, and no header means no host: refused.
+    CHECK(durin::verify(h, proxied("a.example.test", "/"), false).status.code == 403);
+    CHECK(durin::verify(h, asked_url("https://a.example.test/"), true).status.code == 403);
 
     const auto in = durin::sign_in(h, uid, false);
     const auto code = durin::mint_code(h, in.session_id, "a.example.test", durin::hash("n"));
@@ -361,18 +357,24 @@ TEST_CASE("forward auth: sign-in redirect, 401 for nginx, the user header, and n
     CHECK(durin::verify(h, proxied("a.example.test", "/p", got->started.token), true).status.code == 302);
 }
 
-TEST_CASE("recovery: deleting the owner's account lets the setup code make a new owner and keeps everyone else") {
+TEST_CASE("an owner link makes an owner, once, for an hour, and only the newest works") {
     Fixture f;
     W h(f.pool);
-    const auto ann = make_user(h, "ann", true);
-    const auto bob = make_user(h, "bob", false);
-    const auto in = durin::sign_in(h, ann, true, settings(), 6'000'000);
-    REQUIRE(durin::owner_count(h) == 1);
+    const auto s = settings();
+    const long long t = 6'000'000;
+    const auto old = durin::mint_owner_link(h, s, t);
+    const auto code = durin::mint_owner_link(h, s, t);
+    CHECK_FALSE(durin::invite_ok(h, old, t + 1));
+    CHECK(durin::invite_ok(h, code, t + 1));
+    CHECK(durin::is_owner_link(h, code, t + 1));
+    CHECK(durin::open_invites(h, t + 1).empty()); // not listed for anyone on the web
+    CHECK(durin::take_invite(h, code, t + 2) == durin::Link::owner);
+    CHECK_FALSE(durin::take_invite(h, code, t + 3));
+    const auto late = durin::mint_owner_link(h, s, t);
+    CHECK_FALSE(durin::take_invite(h, late, t + s.owner_link_seconds + 1));
 
-    h.exec("DELETE FROM auth_users WHERE id IN (SELECT user_id FROM durin_users WHERE owner = 1)");
-    CHECK(durin::owner_count(h) == 0);
-    CHECK(durin::user_count(h) == 1);
-    CHECK(durin::name_of(h, bob) == "bob");
-    CHECK_FALSE(durin::check(h, in.token, "auth.example.test", settings(), 6'000'001));
-    CHECK_FALSE(durin::name_taken(h, "ann"));
+    const auto ann = make_user(h, "ann", true); // an owner's own invites never make owners
+    const auto invite = durin::mint_invite(h, ann, s, t);
+    CHECK_FALSE(durin::is_owner_link(h, invite, t + 1));
+    CHECK(durin::take_invite(h, invite, t + 1) == durin::Link::member);
 }
