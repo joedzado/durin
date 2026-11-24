@@ -35,13 +35,13 @@ The first run also installs [Revet](https://github.com/joedzado/revet), the C++ 
 
 2. **Point the name at your server.** In your DNS server (Pi-hole, AdGuard Home, your router), send `*.home` to the machine running the proxy.
 
-3. **Trust the certificate** on each device, once. Caddy makes its own, since nobody sells one for `home`. On a Mac, this does it and sets up DNS:
+3. **Trust the certificate** on each device, once. Caddy makes its own, since nobody sells one for `home`. On macOS or Linux:
 
    ```sh
-   sudo sh scripts/mac-setup.sh root.crt home <dns server>
+   sudo sh scripts/trust.sh root.crt home
    ```
 
-iPhone steps, where to find `root.crt`, and choosing a name: [Private TLDs](docs/private-names.md).
+Where to find `root.crt`, what to do on an iPhone, and choosing a name: [Private TLDs](docs/private-names.md).
 
 **Already have Durin on a real domain?** Add `DURIN_DOMAINS=home` to `.env.local` and run `./install.sh`. The same sign-in opens both.
 

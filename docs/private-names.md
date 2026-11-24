@@ -10,14 +10,20 @@ With another proxy, give it a certificate from your own authority. Use one certi
 
 ## Each device, once
 
-**1. Find the name.** In your DNS server (Pi-hole, AdGuard Home, your router), point `*.home` at the machine running the proxy. Devices using that DNS server need nothing more, except Macs, which also need `/etc/resolver/home` (the script below writes it).
+**1. Find the name.** In your DNS server (Pi-hole, AdGuard Home, your router), point `*.home` at the machine running the proxy. A Mac or Linux computer that uses another DNS server, or a Mac that still can't find the name, needs the server's address in step 2.
 
-**2. Trust the certificate.** Copy Caddy's root certificate to the device. It is `pki/authorities/local/root.crt` in Caddy's data folder: `~/Library/Application Support/Caddy` on macOS, `~/.local/share/caddy` on Linux.
+**2. Trust the certificate.** Copy Caddy's root certificate to the device. It is `pki/authorities/local/root.crt` in Caddy's data folder: `~/Library/Application Support/Caddy` on macOS, `~/.local/share/caddy` on Linux (`/var/lib/caddy/.local/share/caddy` when a package runs it as a service).
 
-| Device | |
-|---|---|
-| Mac | `sudo sh scripts/mac-setup.sh root.crt home <dns server>` does both steps |
-| iPhone, iPad | AirDrop it, install the profile, then turn it on in Settings › General › About › Certificate Trust Settings |
+**macOS and Linux**
+
+```sh
+sudo sh scripts/trust.sh root.crt home              # trust it
+sudo sh scripts/trust.sh root.crt home 192.168.1.2  # trust it, and look up *.home at this DNS server
+```
+
+On Linux it covers the system and Chrome (Chrome needs `certutil`; the script says which package). Firefox has its own list: Settings › Privacy & Security › View Certificates › Authorities › Import.
+
+**iPhone and iPad.** AirDrop the file, install the profile, then turn it on in Settings › General › About › Certificate Trust Settings.
 
 Whoever has the private key behind that certificate can impersonate any site to a device that trusts it, so leave the key on the server.
 
