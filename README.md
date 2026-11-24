@@ -23,9 +23,27 @@ git clone https://github.com/joedzado/durin && cd durin
 
 <img src="docs/img/install.svg" alt="1. Run install.sh with your sign-in address and your proxy. 2. Paste what it prints into the proxy. 3. Open the link to make your account.">
 
-On a private TLD it is the same: `./install.sh auth.home caddy`. Your devices then need to [find and trust that name](docs/private-names.md) once.
-
 The first run also installs [Revet](https://github.com/joedzado/revet), the C++ framework Durin is written in.
+
+### On a private TLD
+
+1. **Install** with any name you like:
+
+   ```sh
+   ./install.sh auth.home caddy
+   ```
+
+2. **Point the name at your server.** In your DNS server (Pi-hole, AdGuard Home, your router), send `*.home` to the machine running the proxy.
+
+3. **Trust the certificate** on each device, once. Caddy makes its own, since nobody sells one for `home`. On a Mac, this does it and sets up DNS:
+
+   ```sh
+   sudo sh scripts/mac-setup.sh root.crt home <dns server>
+   ```
+
+iPhone steps, where to find `root.crt`, and choosing a name: [Private TLDs](docs/private-names.md).
+
+**Already have Durin on a real domain?** Add `DURIN_DOMAINS=home` to `.env.local` and run `./install.sh`. The same sign-in opens both.
 
 ## Use
 
@@ -54,7 +72,6 @@ None are needed. To change one, add it to `.env.local` and run `./install.sh`.
 ## More
 
 - [Proxy recipes](docs/proxies.md)
-- [Private TLDs](docs/private-names.md): setting up your devices for `*.home`
 - [Security](SECURITY.md): how it works, what it protects against, what it does not. Not independently audited.
 
 MIT license.
