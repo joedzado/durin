@@ -40,4 +40,4 @@ Durin has not had an independent security review.
 
 ## Reporting a problem
 
-Please report vulnerabilities privately to the maintainer, not in a public issue: use the repository host's private vulnerability reporting if it has one, otherwise the contact on the maintainer's profile. Include what you did and what you saw.
+Please report vulnerabilities privately, not in a public issue: on the repository's GitHub page, open the Security tab and choose "Report a vulnerability". Include what you did and what you saw. Durin has one maintainer, so expect a reply within a few days rather than hours.
