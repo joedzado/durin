@@ -77,12 +77,12 @@ html::Node owner_panel(std::string_view owner_id, std::string_view new_link) {
         html::list(everyone, [&](const durin::Person& p) -> html::Node {
             return html::div{styles::row,
                 html::div{styles::grow,
-                    html::div{styles::row_name, p.name, p.owner ? " · owner" : ""},
+                    html::div{styles::row_name, durin::shown_name(p.name), p.owner ? " · owner" : ""},
                     html::div{styles::meta, std::format("{} passkey{} · joined {}", p.passkeys, p.passkeys == 1 ? "" : "s", date_text(p.created_at))}},
                 p.owner || p.user_id == me ? html::Node{}
                     : html::Node(html::button{styles::btn, styles::btn_quiet, html::attr.type("button"), htmx::attr::post(urls::people_remove),
                           htmx::attr::vals(R"({"user_id":")" + p.user_id + R"("})"), htmx::attr::target(OWNER_PANEL), htmx::attr::swap_outer_html(),
-                          htmx::attr::confirm("Remove " + p.name + "? Their passkeys and sign-ins end now."), "Remove"})};
+                          htmx::attr::confirm("Remove " + durin::shown_name(p.name) + "? Their passkeys and sign-ins end now."), "Remove"})};
         }),
         html::h2{styles::subheading, "Invite links"},
         new_link.empty() ? html::Node{}
@@ -94,7 +94,7 @@ html::Node owner_panel(std::string_view owner_id, std::string_view new_link) {
         invites.empty() ? html::Node(html::p{styles::meta, "No unused links."})
             : html::Node(html::div{styles::rows, html::list(invites, [](const durin::Invite& i) -> html::Node {
                   return html::div{styles::row,
-                      html::div{styles::grow, html::div{styles::meta, "Made " + date_text(i.created_at) + (i.by.empty() ? "" : " by " + i.by) +
+                      html::div{styles::grow, html::div{styles::meta, "Made " + date_text(i.created_at) + (i.by.empty() ? "" : " by " + durin::shown_name(i.by)) +
                                                                           " · expires " + date_text(i.expires_at)}},
                       html::button{styles::btn, styles::btn_quiet, html::attr.type("button"), htmx::attr::post(urls::people_revoke),
                                    htmx::attr::vals(R"({"id":")" + i.id + R"("})"), htmx::attr::target(OWNER_PANEL),
@@ -111,7 +111,7 @@ html::Node account_page(const web::Request& req, std::string_view user_id, std::
     auto db = resources::main_db();
     const auto hosts = durin::hosts_of(db, parent_id);
     return html::div{styles::card, html::attr("data-csrf", web::csrf::token_from(req)),
-        html::h1{styles::heading, "Signed in as ", std::string(name)},
+        html::h1{styles::heading, "Signed in as ", durin::shown_name(name)},
         html::h2{styles::subheading, "Apps opened with this sign-in"},
         hosts.empty() ? html::Node(html::p{styles::meta, "None yet."})
                       : html::Node(html::div{styles::rows, html::list(hosts, [](const durin::HostSession& s) -> html::Node {

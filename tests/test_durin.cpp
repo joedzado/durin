@@ -151,6 +151,13 @@ TEST_CASE("names are lower-case labels that are safe as a header value") {
     CHECK(durin::valid_name(std::string(32, 'a')));
 }
 
+TEST_CASE("names are shown with capitals") {
+    CHECK(durin::shown_name("ann") == "Ann");
+    CHECK(durin::shown_name("mary-ann.o_neil") == "Mary-Ann.O_Neil");
+    CHECK(durin::shown_name("2cool") == "2cool");
+    CHECK(durin::shown_name("").empty());
+}
+
 TEST_CASE("a sign-in ends after idle time, after the maximum, and not at all for others' hosts") {
     Fixture f;
     W h(f.pool);

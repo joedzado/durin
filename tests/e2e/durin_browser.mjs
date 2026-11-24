@@ -87,7 +87,7 @@ try {
   check(await ev(`document.getElementById("join-name").value`) === "", "the owner link shows an empty new-account form");
   await ev(`document.getElementById("join-name").value = "owner"`);
   await ev(`document.querySelector("[data-durin=join]").click()`);
-  check(await until(`document.body.innerText.includes("Signed in as owner")`, "owner signed in"), "the owner link makes an account and signs it in", await status());
+  check(await until(`document.body.innerText.includes("Signed in as Owner")`, "owner signed in"), "the owner link makes an account and signs it in", await status());
   await goto(`https://${APP1}/review?x=1`);
   check(await until(`location.host === "${APP1}"`, `back on ${APP1}`), `one sign-in opens ${APP1}`, await here());
   check(await ev("location.pathname + location.search") === "/review?x=1", "at the original path", await ev("location.pathname + location.search"));
@@ -102,7 +102,7 @@ try {
 
   // 5. The account page lists both, and refuses an open redirect
   await goto(`https://${AUTH}/`);
-  check(await ev(`document.body.innerText.includes("Signed in as owner")`), `${AUTH} shows the signed-in user`);
+  check(await ev(`document.body.innerText.includes("Signed in as Owner")`), `${AUTH} shows the signed-in user`);
   check(await ev(`document.body.innerText.includes("${APP1}") && document.body.innerText.includes("${APP2}")`), "lists the apps opened");
   const hdrs = await ev(`fetch(location.href).then((r) => [r.headers.get("cache-control"), r.headers.get("referrer-policy"), r.headers.get("x-frame-options"), (r.headers.get("content-security-policy") || "").includes("frame-ancestors 'none'")].join("|"))`);
   check(hdrs === "no-store|no-referrer|DENY|true", "pages are not cached, framed or sent as a referrer", hdrs);
@@ -173,7 +173,7 @@ try {
   check(await gev(`!!document.querySelector("[data-durin=join]")`), "the invite link shows the new-account form");
   await gev(`document.getElementById("join-name").value = "guest"`);
   await gev(`document.querySelector("[data-durin=join]").click()`);
-  check(await guntil(`document.querySelector("h1")?.textContent === "Signed in as guest"`, "guest signed in"), "the invite makes an account and signs it in");
+  check(await guntil(`document.querySelector("h1")?.textContent === "Signed in as Guest"`, "guest signed in"), "the invite makes an account and signs it in");
   check(!(await gev(`!!document.getElementById("owner-panel")`)), "an invited account is not an owner");
   check(await gpost("/people/invite", {}) === 403, "a non-owner cannot make invites");
 
@@ -195,10 +195,10 @@ try {
   check((await gcdp("Network.getCookies", { urls: [`https://${APP3}/`] })).cookies.every((c) => c.name !== "__Host-durin"), "and gets no session cookie");
 
   await goto(`https://${AUTH}/`);
-  check(await ev(`document.getElementById("owner-panel").textContent.includes("guest")`), "the owner sees the new account");
+  check(await ev(`document.getElementById("owner-panel").textContent.includes("Guest")`), "the owner sees the new account");
   await ev(`window.confirm = () => true`);
-  await ev(`[...document.querySelectorAll("#owner-panel .row")].find((r) => r.textContent.includes("guest")).querySelector("button").click()`);
-  check(await until(`!document.getElementById("owner-panel").textContent.includes("guest")`, "guest gone"), "the owner removes the account");
+  await ev(`[...document.querySelectorAll("#owner-panel .row")].find((r) => r.textContent.includes("Guest")).querySelector("button").click()`);
+  check(await until(`!document.getElementById("owner-panel").textContent.includes("Guest")`, "guest gone"), "the owner removes the account");
   check(!(await ev(`[...document.querySelectorAll("#owner-panel .row")].some((r) => r.textContent.includes("owner") && r.querySelector("button"))`)),
     "the owner's own row has no Remove button");
   await send("Target.disposeBrowserContext", { browserContextId });

@@ -278,6 +278,17 @@ inline auto valid_name(std::string_view n) -> bool {
            std::ranges::all_of(n, [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-'; });
 }
 
+// How people see a name: "mary-ann" is "Mary-Ann". The stored name, which apps get, stays lower case.
+inline auto shown_name(std::string_view n) -> std::string {
+    std::string out(n);
+    bool start = true;
+    for (char& c : out) {
+        if (start) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        start = c == '-' || c == '.' || c == '_';
+    }
+    return out;
+}
+
 template<typename H>
 auto add_user(H& h, std::string_view user_id, std::string_view name, bool owner, long long t = now()) -> bool {
     if (name_taken(h, name)) return false;
