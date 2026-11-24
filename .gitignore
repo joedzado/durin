@@ -1,0 +1,7 @@
+# Generated files
+CMakeLists.txt
+build/
+.DS_Store
+data/
+.env.local
+*.log

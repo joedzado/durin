@@ -1,0 +1,29 @@
+#include <revet/csrf.hpp>
+#include <revet/htmx.hpp>
+#include <revet/sanitize.hpp>
+#include <revet/web.hpp>
+#include "durin.hpp"
+
+// GET / on the auth host. With ?rd=<app address> and a live sign-in: straight back to the app with a
+// one-time code. Otherwise the sign-in page (?invite=<code>: with the new-account form), or, when
+// signed in, the account page.
+static auto render_get(const web::Request& req) -> web::Response {
+    if (durin::request_host(req) != durin::settings().auth_host) {
+        return web::Response{.body = "not found", .content_type = "text/plain", .status = web::status::not_found};
+    }
+    auto h = resources::main_db<db::Write>();
+    const auto who = durin::auth_session(h, req);
+    const auto rd = req.query.get("rd");
+    const auto target = durin::parse_target(rd);
+
+    if (who && target) {
+        const auto code = durin::mint_code(h, who->parent_id, target->host);
+        return web::redirect("https://" + target->host + "/.durin/callback?code=" + code + "&rd=" + sanitize::url_encode(target->path),
+                             web::status::found);
+    }
+    if (who) return layout_main(req, "Durin", account_page(req, who->user_id, who->name, who->parent_id));
+    const auto for_host = target ? target->host : std::string();
+    const auto invite = req.query.get("invite");
+    const bool setup = durin::owner_count(h) == 0 && !durin::settings().setup_code.empty();
+    return layout_main(req, "Sign in", sign_in_page(req, for_host, setup, invite, durin::invite_ok(h, invite)));
+}

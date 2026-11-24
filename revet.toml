@@ -1,0 +1,17 @@
+name = "durin"
+port = 3130
+
+# ── File Uploads ──────────────────────────────────────────────────────────────
+[uploads.files]
+# incoming and validated dirs are created automatically by cmake
+
+# ── Logging Configuration ─────────────────────────────────────────────────────
+[logging]
+enabled = true
+level = "info"  # Options: debug, info, warn, error
+
+# ── Database ──────────────────────────────────────────────────────────────────
+[resources.main_db]
+type = "sqlite"
+path = "data/durin.db"
+pool_size = 4
