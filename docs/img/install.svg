@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 520" role="img" aria-label="Run ./install.sh with your sign-in address and your proxy, paste what it prints into the proxy, then open the link to make your account.">
+<style>text{font:16px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.c{fill:#d7dee8}.d{fill:#7c8796}.b{fill:#fff;font-weight:600}.l{font:600 15px -apple-system,"Segoe UI",system-ui,sans-serif;fill:#ffb454}.r{fill:none;stroke:#ffb454;stroke-width:2}.a,.u{fill:none;stroke:#ffb454;stroke-width:2}</style>
+<defs><marker id="h" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 10 5 0 10z" fill="#ffb454"/></marker></defs>
+<rect width="940" height="520" rx="14" fill="#151b23"/>
+<text x="36.0" y="48" class="d" textLength="9.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">$</text>
+<text x="55.2" y="48" class="c" textLength="528.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">git clone https://github.com/joedzado/durin &amp;&amp; cd durin</text>
+<text x="36.0" y="82" class="d" textLength="9.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">$</text>
+<text x="55.2" y="82" class="c" textLength="115.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">./install.sh</text>
+<text x="189.6" y="82" class="c" textLength="153.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">auth.example.com</text>
+<text x="372.0" y="82" class="c" textLength="48.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">caddy</text>
+<rect x="180.6" y="63" width="171.6" height="28" rx="13" class="r"/>
+<path d="M266 124 V96" class="a" marker-end="url(#h)"/>
+<text x="266.4" y="142" class="l" text-anchor="middle">where you will sign in</text>
+<rect x="363.0" y="63" width="66.0" height="28" rx="13" class="r"/>
+<path d="M520 77 H434" class="a" marker-end="url(#h)"/>
+<text x="528.0" y="82" class="l" text-anchor="start">your proxy: caddy, nginx, traefik, envoy or haproxy</text>
+<text x="36.0" y="188" class="b" textLength="326.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Durin is running on 127.0.0.1:3130</text>
+<text x="36.0" y="226" class="b" textLength="201.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1. Add this to Caddy:</text>
+<rect x="27" y="238" width="346" height="162" rx="13" class="r"/>
+<text x="45.6" y="264" class="c" textLength="124.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">(durin) { … }</text>
+<text x="45.6" y="288" class="c" textLength="211.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">auth.example.com { … }</text>
+<text x="45.6" y="312" class="c" textLength="163.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">app.example.com {</text>
+<text x="45.6" y="336" class="c" textLength="153.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">    import durin</text>
+<text x="45.6" y="360" class="c" textLength="307.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">    reverse_proxy 127.0.0.1:8080</text>
+<text x="45.6" y="384" class="c" textLength="9.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">}</text>
+<path d="M520 276 H378" class="a" marker-end="url(#h)"/>
+<text x="528.0" y="281" class="l" text-anchor="start">paste this into your Caddyfile</text>
+<path d="M84.0 341 h115.2" class="u"/>
+<path d="M520 331 H207" class="a" marker-end="url(#h)"/>
+<text x="528.0" y="336" class="l" text-anchor="start">this one line protects an app</text>
+<text x="36.0" y="446" class="b" textLength="201.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">2. Make your account:</text>
+<text x="45.6" y="484" class="c" textLength="403.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">https://auth.example.com/?invite=dNYT9bX4…</text>
+<rect x="36.6" y="465" width="421.2" height="28" rx="13" class="r"/>
+<path d="M520 479 H463" class="a" marker-end="url(#h)"/>
+<text x="528.0" y="484" class="l" text-anchor="start">then open this: you are in</text>
+</svg>

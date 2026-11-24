@@ -16,16 +16,13 @@ git clone https://github.com/joedzado/durin && cd durin
 ./install.sh auth.example.com caddy
 ```
 
-That builds Durin, starts it, and prints two things:
+<img src="docs/img/install.svg" alt="1. Run install.sh with your sign-in address and your proxy. 2. Paste what it prints into the proxy. 3. Open the link to make your account.">
 
-1. The config to paste into your proxy (`caddy`, `nginx`, `traefik`, `envoy` or `haproxy`).
-2. A link that makes your account.
-
-The first build also installs [Revet](https://github.com/joedzado/revet), the C++ framework Durin is written in.
+The first run also installs [Revet](https://github.com/joedzado/revet), the C++ framework Durin is written in.
 
 ## Use
 
-- **Protect an app:** add the app rule from step 1 to it. With Caddy that is one line, `import durin`.
+- **Protect an app:** add the app rule that `install.sh` printed. With Caddy that is one line, `import durin`.
 - **Invite someone:** sign in at `auth.example.com` and press *New invite link*. There is no other way to get an account.
 - **Know who it is:** your app gets the account name in the `Remote-User` header.
 - **Sign out:** once, everywhere.
