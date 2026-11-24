@@ -56,6 +56,15 @@ Where to find `root.crt`, what to do on an iPhone, and choosing a name: [Private
 
 Everyone with an account can open every app; Durin has no per-app permissions and is not an OIDC provider. Pick the sign-in name carefully: passkeys belong to it and do not survive a rename.
 
+## Small
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/compare-dark.svg">
+  <img src="docs/img/compare-light.svg" alt="Memory, idle: Durin 7 MB, Authelia 72 MB. Size: Durin 5 MB, Authelia 26 MB, Authentik 473 MB.">
+</picture>
+
+<sub>Measured November 2026 on Apple silicon. Memory: the running process, on the same machine (Authelia 4.39 in a container, without its Redis; Authentik not measured). Size: Durin's program; the others' compressed container images, with Postgres for Authentik 2026.8.</sub>
+
 ## Settings
 
 None are needed. To change one, add it to `.env.local` and run `./install.sh`.
