@@ -1,10 +1,12 @@
-# Private names
+# Private TLDs
 
 Durin works on any name your own network resolves: `auth.home` for signing in, `photos.home`, `music.home` and so on for apps. Nothing is registered and nothing leaves your network. These examples use `home`.
 
 ## The proxy
 
-`./install.sh auth.home caddy` prints Caddy config with `tls internal` on each site, so Caddy makes the certificates itself. With another proxy, give it a certificate from your own authority. Use one certificate per host: Chrome rejects `*.home`.
+`./install.sh auth.home caddy` prints Caddy config with `tls internal` on each site, so Caddy makes the certificates itself. To add one to a Durin that signs in elsewhere, put `DURIN_DOMAINS=home` in `.env.local`, run `./install.sh`, and give each app `tls internal` and `import durin`.
+
+With another proxy, give it a certificate from your own authority. Use one certificate per host: Chrome rejects `*.home`.
 
 ## Each device, once
 

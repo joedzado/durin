@@ -49,8 +49,11 @@ void site_init() {
     durin::create_schema(h);
 
     const auto& s = durin::settings();
-    if (s.auth_host.empty() || s.suffix.empty() || !s.auth_host.ends_with("." + s.suffix)) {
-        throw web::StartupError("set DURIN_AUTH_HOST (e.g. auth.example.com), and DURIN_SUFFIX if apps are not its siblings", 1);
+    if (s.domains.empty() || !durin::is_dns_name(s.auth_host)) throw web::StartupError("set DURIN_AUTH_HOST, like auth.example.com", 1);
+    std::string domains;
+    for (const auto& d : s.domains) {
+        if (!durin::is_dns_name(d)) throw web::StartupError("DURIN_DOMAINS: not a domain: " + d, 1);
+        domains += (domains.empty() ? "*." : ", *.") + d;
     }
     auto& pk = web::auth::passkeys::config();
     pk.rp_name = "Durin";
@@ -58,5 +61,5 @@ void site_init() {
     pk.rp.origins = {"https://" + s.auth_host};
     pk.rp.require_user_verification = true;
     pk.app_link_paths.clear();
-    log::info("durin: auth host {}, app hosts *.{}, {} account(s)", s.auth_host, s.suffix, durin::user_count(h));
+    log::info("durin: auth host {}, app hosts {}, {} account(s)", s.auth_host, domains, durin::user_count(h));
 }

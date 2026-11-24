@@ -1,6 +1,6 @@
 # Durin: agent guide
 
-Passkey gate for a family of hosts (Revet, C++23). A reverse proxy's forward auth asks Durin about every request to a gated host under the suffix; one sign-in at the auth host covers every app. Named for the Doors of Durin. Proxy setup: `docs/proxies.md`.
+Passkey gate for a family of hosts (Revet, C++23). A reverse proxy's forward auth asks Durin about every request to a gated host under one of its domains; one sign-in at the auth host covers every app. Named for the Doors of Durin. Proxy setup: `docs/proxies.md`.
 
 ## Build, run
 - `./install.sh <host> <proxy>` does everything on a new machine; with no arguments it rebuilds and restarts. It prints the matching `## <Proxy>` section of `docs/proxies.md`, replacing `example.com`, `auth.example.com` and `3130`, so recipes keep those placeholders.

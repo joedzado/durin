@@ -1,5 +1,5 @@
 // End-to-end test of Durin through a real proxy, in a headless Chromium with a virtual authenticator.
-// No dependencies (Node 22+). Chromium sends every *.<suffix> host to the proxy's address and trusts
+// No dependencies (Node 22+). Chromium sends these hosts to the proxy's address and trusts
 // the proxy's certificate by its public key (pass the intermediate, or a self-signed leaf; Chromium
 // ignores the flag for a root), so this needs no DNS or keychain changes.
 //
@@ -18,7 +18,6 @@ const OWNER_LINK = process.env.OWNER_LINK || "";
 const AUTH = process.env.DURIN_AUTH_HOST || "";
 const [APP1, APP2, APP3] = (process.env.E2E_APPS || "").split(",");
 if (!AUTH || !APP3) { console.log("set DURIN_AUTH_HOST and E2E_APPS (three hosts)"); process.exit(2); }
-const SUFFIX = AUTH.slice(AUTH.indexOf(".") + 1);
 const DEBUG_PORT = 9334;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
@@ -29,7 +28,7 @@ const spki = execFileSync("sh", ["-c",
 const profile = mkdtempSync(join(tmpdir(), "durin-e2e-"));
 const chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${DEBUG_PORT}`, `--user-data-dir=${profile}`,
   "--no-first-run", "--no-default-browser-check", "--disable-gpu",
-  `--host-resolver-rules=MAP *.${SUFFIX} ${ADDR}`, `--ignore-certificate-errors-spki-list=${spki}`, "about:blank"], { stdio: "ignore" });
+  `--host-resolver-rules=${[AUTH, APP1, APP2, APP3].map((h) => `MAP ${h} ${ADDR}`).join(", ")}`, `--ignore-certificate-errors-spki-list=${spki}`, "about:blank"], { stdio: "ignore" });
 
 async function connect() {
   for (let i = 0; i < 50; i++) {

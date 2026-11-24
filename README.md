@@ -4,7 +4,10 @@ One passkey sign-in for all your self-hosted apps.
 
 Durin sits behind your reverse proxy. Sign in once at `auth.example.com` and every app on `*.example.com` opens. No passwords, no email, no outside service.
 
-**It also works on names you make up**, like `photos.home` and `music.home`, with no domain to buy and nothing public. Single sign-on normally shares one cookie across the domain, which browsers refuse on a bare name like `home`. Durin gives each app its own cookie instead, so one sign-in still opens them all.
+- **Passkeys only** — Face ID, Touch ID, a phone or a security key. No password to type, reuse or leak.
+- **Private TLDs** — use names you make up, like `photos.home`, with no domain to buy and nothing public. Single sign-on usually shares one cookie across a domain, which browsers refuse on a bare TLD; Durin gives each app its own.
+- **Several domains, one sign-in** — `notes.example.com` and `photos.home` open together.
+- **Your proxy** — Caddy, nginx, Traefik, Envoy or HAProxy.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/dark.png">
@@ -20,7 +23,7 @@ git clone https://github.com/joedzado/durin && cd durin
 
 <img src="docs/img/install.svg" alt="1. Run install.sh with your sign-in address and your proxy. 2. Paste what it prints into the proxy. 3. Open the link to make your account.">
 
-On a made-up name it is the same: `./install.sh auth.home caddy`. Your devices then need to [find and trust that name](docs/private-names.md) once.
+On a private TLD it is the same: `./install.sh auth.home caddy`. Your devices then need to [find and trust that name](docs/private-names.md) once.
 
 The first run also installs [Revet](https://github.com/joedzado/revet), the C++ framework Durin is written in.
 
@@ -41,6 +44,7 @@ None are needed. To change one, add it to `.env.local` and run `./install.sh`.
 
 | Setting | Default | |
 |---|---|---|
+| `DURIN_DOMAINS` | | More domains you control for apps, such as `home,example.org` |
 | `DURIN_IDLE_SECONDS` | `300` | Sign out after this long without activity |
 | `DURIN_MAX_SECONDS` | `43200` | Sign out after this long regardless |
 | `DURIN_REMEMBER_SECONDS` | `2592000` | How long "Remember me" lasts |
@@ -50,7 +54,7 @@ None are needed. To change one, add it to `.env.local` and run `./install.sh`.
 ## More
 
 - [Proxy recipes](docs/proxies.md)
-- [Private names](docs/private-names.md): setting up your devices for `*.home`
+- [Private TLDs](docs/private-names.md): setting up your devices for `*.home`
 - [Security](SECURITY.md): how it works, what it protects against, what it does not. Not independently audited.
 
 MIT license.

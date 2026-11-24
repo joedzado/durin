@@ -1,7 +1,7 @@
 #pragma once
 
-// Durin: one passkey sign-in at the auth host (e.g. auth.example.com) for every app host under the
-// suffix (*.example.com), behind any reverse proxy with forward auth.
+// Durin: one passkey sign-in at the auth host (e.g. auth.example.com) for every app host under its
+// domains (*.example.com, *.home), behind any reverse proxy with forward auth.
 //
 // There is no shared cookie (browsers set none on a bare public suffix, and host-only cookies leak
 // less). Instead:
@@ -23,6 +23,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
+#include <ranges>
 
 #include <sodium.h>
 
@@ -36,8 +38,8 @@ namespace durin {
 
 struct Settings {
     std::string auth_host;                // DURIN_AUTH_HOST (required): where sign-in happens, the passkey RP ID
-    std::string suffix;                   // DURIN_SUFFIX: app hosts are <name>.<suffix>; default: the auth host
-                                          // without its first label
+    std::vector<std::string> domains;     // app hosts are <name>.<domain>: the auth host's own domain, then
+                                          // DURIN_DOMAINS (comma separated)
     std::string user_header = "Remote-User"; // DURIN_USER_HEADER: the header verify answers with the account name
     long long idle_seconds = 5 * 60;      // DURIN_IDLE_SECONDS: unremembered sign-in ends after this much quiet
     long long max_seconds = 12 * 3600;    // DURIN_MAX_SECONDS: ... and after this long in any case
@@ -67,13 +69,17 @@ inline auto settings() -> const Settings& {
             }
         };
         text("DURIN_AUTH_HOST", c.auth_host);
-        text("DURIN_SUFFIX", c.suffix);
         text("DURIN_USER_HEADER", c.user_header);
-        for (auto* v : {&c.auth_host, &c.suffix}) {
+        std::string more;
+        text("DURIN_DOMAINS", more);
+        for (auto* v : {&c.auth_host, &more}) {
             std::ranges::transform(*v, v->begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
         }
-        if (c.suffix.empty()) {
-            if (const auto dot = c.auth_host.find('.'); dot != std::string::npos) c.suffix = c.auth_host.substr(dot + 1);
+        if (const auto dot = c.auth_host.find('.'); dot != std::string::npos) c.domains.push_back(c.auth_host.substr(dot + 1));
+        for (const auto part : more | std::views::split(',')) {
+            std::string d(std::string_view{part});
+            std::erase_if(d, [](unsigned char ch) { return std::isspace(ch) != 0; });
+            if (!d.empty()) c.domains.push_back(std::move(d));
         }
         number("DURIN_IDLE_SECONDS", c.idle_seconds);
         number("DURIN_MAX_SECONDS", c.max_seconds);
@@ -129,13 +135,16 @@ inline auto original_url(const web::Request& req) -> Original {
     return {strip_port(std::string(authority)), slash == std::string_view::npos ? "/" : std::string(rest.substr(slash))};
 }
 
-// <label>(.<label>)*.<suffix>, DNS characters only, and not the auth host.
+// DNS labels: letters, digits and dashes, no empty label, no leading dash.
+inline auto is_dns_name(std::string_view n) -> bool {
+    if (n.empty() || n.size() > 253 || n.front() == '.' || n.back() == '.' || n.front() == '-' || n.contains("..")) return false;
+    return std::ranges::all_of(n, [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '.'; });
+}
+
+// <label>(.<label>)*.<domain> for one of the domains, and not the auth host.
 inline auto is_app_host(std::string_view host, const Settings& s = settings()) -> bool {
-    const std::string tail = "." + s.suffix;
-    if (host.size() <= tail.size() || host.size() > 253 || !host.ends_with(tail) || host == s.auth_host) return false;
-    const auto name = host.substr(0, host.size() - tail.size());
-    if (name.front() == '.' || name.back() == '.' || name.front() == '-' || name.contains("..")) return false;
-    return std::ranges::all_of(name, [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '.'; });
+    if (host == s.auth_host || !is_dns_name(host)) return false;
+    return std::ranges::any_of(s.domains, [&](const std::string& d) { return host.size() > d.size() + 1 && host.ends_with("." + d); });
 }
 
 // A path the callback may send the browser to on its own host: starts with one '/', no scheme-relative

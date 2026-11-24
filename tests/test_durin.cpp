@@ -18,13 +18,14 @@ using W = db::sqlite::Handle<db::Write>;
 // The environment is read once, on first use: set it before any test runs.
 [[maybe_unused]] const int env_ready = [] {
     setenv("DURIN_AUTH_HOST", "auth.example.test", 1);
+    setenv("DURIN_DOMAINS", "Lab, other.test,", 1);
     return 0;
 }();
 
 auto settings() -> durin::Settings {
     durin::Settings s;
     s.auth_host = "auth.example.test";
-    s.suffix = "example.test";
+    s.domains = {"example.test", "lab"};
     return s;
 }
 
@@ -78,10 +79,15 @@ auto asked_url(const std::string& url) -> web::Request {
 
 } // namespace
 
-TEST_CASE("app hosts are DNS names under the suffix, never the auth host") {
+TEST_CASE("app hosts are DNS names under one of its domains, never the auth host") {
     const auto s = settings();
     CHECK(durin::is_app_host("a.example.test", s));
     CHECK(durin::is_app_host("a.b-c.example.test", s));
+    CHECK(durin::is_app_host("photos.lab", s)); // a second domain, here a private TLD
+    CHECK_FALSE(durin::is_app_host("lab", s));
+    CHECK_FALSE(durin::is_app_host("photoslab", s));
+    CHECK_FALSE(durin::is_app_host("photos.lab.evil.com", s));
+    CHECK_FALSE(durin::is_app_host("evil.notlab", s));
     CHECK_FALSE(durin::is_app_host("auth.example.test", s));
     CHECK_FALSE(durin::is_app_host("example.test", s));
     CHECK_FALSE(durin::is_app_host(".example.test", s));
@@ -92,6 +98,10 @@ TEST_CASE("app hosts are DNS names under the suffix, never the auth host") {
     CHECK_FALSE(durin::is_app_host("A.example.test", s));
     CHECK_FALSE(durin::is_app_host("a b.example.test", s));
     CHECK_FALSE(durin::is_app_host("a:8443.example.test", s));
+}
+
+TEST_CASE("domains come from the auth host and DURIN_DOMAINS") {
+    CHECK(durin::settings().domains == std::vector<std::string>{"example.test", "lab", "other.test"});
 }
 
 TEST_CASE("local paths keep the browser on its own host") {
@@ -114,6 +124,7 @@ TEST_CASE("a sign-in return address is an https app host or nothing") {
     CHECK(ok->path == "/p?q=1");
     CHECK(durin::parse_target("https://a.example.test", s)->path == "/");
     CHECK(durin::parse_target("https://a.example.test:443/x", s)->host == "a.example.test");
+    CHECK(durin::parse_target("https://photos.lab/x", s)->host == "photos.lab");
     CHECK(durin::parse_target("https://A.EXAMPLE.TEST/x", s)->host == "a.example.test");
 
     for (const char* bad : {"http://a.example.test/", "https://auth.example.test/", "https://evil.com/", "https://a.example.test@evil.com/",
