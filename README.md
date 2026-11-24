@@ -32,7 +32,7 @@ There is no shared cookie because browsers will not set one on a bare public suf
 
 ## Run it
 
-You need the [Revet](https://github.com/joedzado/revet) framework (0.4.1 or later, with `revet/auth`), a C++23 compiler, and a reverse proxy that terminates TLS. Passkeys need HTTPS, and a passkey belongs to the auth host name, so changing that name later loses every passkey.
+You need the [Revet](https://github.com/joedzado/revet) framework from `main` (0.4.1 with `revet/auth` and `passkeys::Expect`, which a build before that lacks), a C++23 compiler, and a reverse proxy that terminates TLS. Passkeys need HTTPS, and a passkey belongs to the auth host name, so changing that name later loses every passkey.
 
 ```sh
 revet build

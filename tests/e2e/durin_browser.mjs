@@ -203,6 +203,14 @@ try {
   check(!(await ev(`[...document.querySelectorAll("#owner-panel .row")].some((r) => r.textContent.includes("owner") && r.querySelector("button"))`)),
     "the owner's own row has no Remove button");
   await send("Target.disposeBrowserContext", { browserContextId });
+  // 10. A signed-in user adds a second passkey (a fresh authenticator: the first one already holds one)
+  await goto(`https://${AUTH}/`);
+  await cdp("WebAuthn.removeVirtualAuthenticator", { authenticatorId });
+  await cdp("WebAuthn.addVirtualAuthenticator", { options: { protocol: "ctap2", transport: "internal",
+    hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
+  await ev(`document.querySelector("[data-durin=add]").click()`);
+  check(await until(`document.getElementById("durin-status").textContent === "Passkey added."`, "passkey added"), "a signed-in user adds a second passkey", await status());
+  check(await until(`document.querySelectorAll("#passkey-list .row").length === 2`, "two passkeys listed"), "and the list shows both");
 } catch (e) {
   console.log("ERROR", e.message); failures++;
 } finally {

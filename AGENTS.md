@@ -3,7 +3,7 @@
 Passkey gate for a family of hosts (Revet, C++23). A reverse proxy's forward auth asks Durin about every request to a gated host under the suffix; one sign-in at the auth host covers every app. Named for the Doors of Durin. Proxy setup: `docs/proxies.md`.
 
 ## Build, run
-- Needs Revet 0.4.1 or later (it ships `revet/auth`): `revet build`. `REVET_FRAMEWORK=<checkout> revet build` builds against a framework checkout instead.
+- Needs Revet `main` (0.4.1 with `revet/auth` and `passkeys::Expect`): `revet build`. `REVET_FRAMEWORK=<checkout> revet build` builds against a framework checkout instead.
 - `scripts/serve.sh [port]` (default 3130) loads `.env.local`; copy `.env.example` and fill it in (600, not in git). Required: `REVET_COOKIE_KEY`, `DURIN_AUTH_HOST`. Durin refuses to start without an auth host.
 - `DURIN_SETUP_CODE` makes an owner while there is none (`owner_count == 0`) and is ignored otherwise (delete it afterwards). Then only an owner's one-use invite link (account page, 7 days) makes an account. Owners list and remove people; nobody can remove an owner. Recovery for a lost owner is in the README.
 - Sessions: `DURIN_IDLE_SECONDS` (300), `DURIN_MAX_SECONDS` (43200), `DURIN_REMEMBER_SECONDS` (30 days, "Remember me").

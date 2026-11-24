@@ -32,24 +32,19 @@ static auto render_post(const web::Request& req) -> web::Response {
     if (!who && !first && !durin::invite_ok(h, invite)) return web::api::error(web::status::forbidden, invite.empty() ? "setup_code" : "invite");
     if (!who && !durin::valid_name(name)) return web::api::error(web::status::bad_request, "bad_name");
 
-    const auto done = pk::finish_registration(h, challenge_id, client_data, attestation, label);
+    // The framework refuses a challenge that was not issued to this caller: a signed-in user finishes only
+    // their own add-passkey challenge, anyone else only a new-account one.
+    const auto done = pk::finish_registration(h, challenge_id, client_data, attestation, label,
+                                              who ? pk::Expect::user(who->user_id) : pk::Expect::new_account());
     if (!done) {
         log::warn("durin: passkey registration refused (kind {})", static_cast<int>(done.error().kind));
         const bool taken = done.error().kind == pk::Failure::Kind::credential_taken;
         return web::api::error(taken ? web::status::conflict : web::status::bad_request, taken ? "credential_taken" : "registration_failed");
     }
     if (who) {
-        // A signed-in user's challenge only ever adds to that user. A challenge for a new account is
-        // undone; one for another existing account is refused but never deletes that account.
-        if (done->new_user || done->user_id != who->user_id) {
-            if (done->new_user) web::auth::delete_user(h, done->user_id);
-            log::warn("durin: {} finished a registration challenge that was not theirs", who->name);
-            return web::api::error(web::status::bad_request, "registration_failed");
-        }
         log::info("durin: {} added a passkey", who->name);
         return web::Response{.body = R"({"ok":true})", .content_type = "application/json"};
     }
-    if (!done->new_user) return web::api::error(web::status::bad_request, "registration_failed");
     // Spend the invite (or re-check that there is still no owner) before keeping the account.
     const bool allowed = first ? durin::owner_count(h) == 0 : durin::take_invite(h, invite);
     if (!allowed || !durin::add_user(h, done->user_id, name, first)) {
