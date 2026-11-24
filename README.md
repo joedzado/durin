@@ -4,6 +4,11 @@ One passkey sign-in for all your self-hosted apps.
 
 Durin sits behind your reverse proxy. Sign in once at `auth.example.com` and every app on `*.example.com` opens. No passwords, no email, no outside service.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/dark.png">
+  <img src="docs/img/light.png" alt="Durin's sign-in page and account page">
+</picture>
+
 ## Install
 
 ```sh
