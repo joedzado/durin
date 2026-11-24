@@ -7,6 +7,10 @@ ROOT="${1:?usage: sudo sh mac-setup.sh root.crt suffix dns-server [auth-host]}"
 SUFFIX="${2:?suffix, e.g. home}"
 DNS="${3:?DNS server address}"
 AUTH="${4:-auth.$SUFFIX}"
+case "$SUFFIX" in ""|*[!a-z0-9.-]*) echo "suffix: lower-case letters, digits, dots and dashes only"; exit 1;; esac
+case "$DNS" in ""|*[!0-9a-fA-F:.]*) echo "dns server: an IP address"; exit 1;; esac
+case "$AUTH" in ""|*[!a-z0-9.-]*) echo "auth host: lower-case letters, digits, dots and dashes only"; exit 1;; esac
+[ -f "$ROOT" ] || { echo "no such file: $ROOT"; exit 1; }
 LOG=/tmp/durin-mac-setup.log
 {
   echo "== $(date)"

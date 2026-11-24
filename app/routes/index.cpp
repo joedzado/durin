@@ -16,8 +16,9 @@ static auto render_get(const web::Request& req) -> web::Response {
     const auto rd = req.query.get("rd");
     const auto target = durin::parse_target(rd);
 
-    if (who && target) {
-        const auto code = durin::mint_code(h, who->parent_id, target->host);
+    const auto nonce_hash = req.query.get("n");
+    if (who && target && durin::is_nonce_hash(nonce_hash)) {
+        const auto code = durin::mint_code(h, who->parent_id, target->host, nonce_hash);
         return web::redirect("https://" + target->host + "/.durin/callback?code=" + code + "&rd=" + sanitize::url_encode(target->path),
                              web::status::found);
     }

@@ -24,9 +24,9 @@ It works with anything that can ask an HTTP address about each request: Caddy, T
 ## How it works
 
 1. The proxy sends `/.durin/*` on every gated host to Durin, and everything else through forward auth to `GET /.durin/verify`.
-2. Durin looks for a session cookie (`__Host-durin`) made for that exact host. Found: 200 and the user header. Not found: redirect to `https://auth.example.com/?rd=<original address>`.
-3. At the auth host the user signs in with a passkey. Durin then sends the browser back to `https://app.example.com/.durin/callback?code=…` with a one-time code (60 seconds, single use, bound to that host).
-4. The callback swaps the code for a cookie that only that host holds.
+2. Durin looks for a session cookie (`__Host-durin`) made for that exact host. Found: 200 and the user header. Not found: redirect to `https://app.example.com/.durin/start`, which plants a random nonce in a cookie only that host can read and sends the browser to `https://auth.example.com/?rd=<original address>&n=<hash of the nonce>`.
+3. At the auth host the user signs in with a passkey. Durin then sends the browser back to `https://app.example.com/.durin/callback?code=…` with a one-time code (60 seconds, single use, bound to that host and to the nonce's hash).
+4. The callback checks the nonce cookie against the code and swaps it for a cookie that only that host holds. A code made in someone else's browser therefore signs nobody else in.
 
 There is no shared cookie because browsers will not set one on a bare public suffix, and a per-host cookie keeps one compromised app from reading another's session. Every cookie names a server-side session, so sign-out is immediate. Return addresses are checked against the suffix, so the redirect cannot be pointed at another site.
 
@@ -63,7 +63,7 @@ Set in `.env.local`, which `scripts/serve.sh` loads.
 
 ## A private suffix (such as `.home`)
 
-A private suffix works, with two extra jobs. Point its DNS at your proxy (a wildcard record in your resolver), and make every device trust the proxy's certificate authority, because no public authority will issue for a made-up name. Chrome also refuses a wildcard certificate directly under a bare suffix, so use one certificate per host (Caddy's `tls internal` with `on_demand` and `on_demand_tls { ask http://127.0.0.1:3130/.durin/ask }` does this). On a Mac, `sudo sh scripts/mac-setup.sh <root.crt> <suffix> <dns server>` adds the resolver entry and trusts the certificate.
+A private suffix works, with two extra jobs. Point its DNS at your proxy (a wildcard record in your resolver), and make every device trust the proxy's certificate authority, because no public authority will issue for a made-up name. Chrome also refuses a wildcard certificate directly under a bare suffix, so use one certificate per host (Caddy's `tls internal` with `on_demand` and `on_demand_tls { ask http://127.0.0.1:3130/.durin/ask }` does this). On a Mac, `sudo sh scripts/mac-setup.sh <root.crt> <suffix> <dns server>` adds the resolver entry and trusts the certificate. Trusting a root means whoever holds its private key can impersonate any site to that device, so keep the proxy's CA key private and install only that proxy's root.
 
 ## Recovery
 

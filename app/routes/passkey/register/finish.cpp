@@ -39,9 +39,11 @@ static auto render_post(const web::Request& req) -> web::Response {
         return web::api::error(taken ? web::status::conflict : web::status::bad_request, taken ? "credential_taken" : "registration_failed");
     }
     if (who) {
-        // A signed-in user's challenge only ever adds to that user.
+        // A signed-in user's challenge only ever adds to that user. A challenge for a new account is
+        // undone; one for another existing account is refused but never deletes that account.
         if (done->new_user || done->user_id != who->user_id) {
-            web::auth::delete_user(h, done->user_id);
+            if (done->new_user) web::auth::delete_user(h, done->user_id);
+            log::warn("durin: {} finished a registration challenge that was not theirs", who->name);
             return web::api::error(web::status::bad_request, "registration_failed");
         }
         log::info("durin: {} added a passkey", who->name);

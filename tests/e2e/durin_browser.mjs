@@ -40,8 +40,10 @@ async function connect() {
 const ws = new WebSocket(await connect());
 await new Promise((r) => (ws.onopen = r));
 let nextId = 1; const pending = new Map();
+let onPaused = null;
 ws.onmessage = (m) => {
   const msg = JSON.parse(m.data);
+  if (msg.method === "Fetch.requestPaused" && onPaused) onPaused(msg.params);
   if (msg.id && pending.has(msg.id)) { const { res, rej } = pending.get(msg.id); pending.delete(msg.id); msg.error ? rej(new Error(JSON.stringify(msg.error))) : res(msg.result); }
 };
 const send = (method, params = {}, sessionId) => new Promise((res, rej) => {
@@ -179,6 +181,19 @@ try {
   await gcdp("Network.clearBrowserCookies");
   await ggoto(link);
   check(await gev(`document.body.textContent.includes("was used")`), "an invite works only once");
+
+  // A code made for one browser's nonce does not sign another browser in (login CSRF): hold back the
+  // hand-off the signed-in owner's browser is sent on, and open it in the signed-out guest's browser.
+  const caught = [];
+  onPaused = (p) => { caught.push(p.request.url); send("Fetch.failRequest", { requestId: p.requestId, errorReason: "Aborted" }, sessionId); };
+  await cdp("Fetch.enable", { patterns: [{ urlPattern: "*/.durin/callback*", requestStage: "Request" }] });
+  await cdp("Page.navigate", { url: `https://${AUTH}/?rd=${encodeURIComponent(`https://${APP3}/x`)}&n=${"a".repeat(64)}` });
+  for (let i = 0; i < 40 && caught.length === 0; i++) await sleep(150);
+  await cdp("Fetch.disable"); onPaused = null;
+  check(caught.length === 1 && caught[0].startsWith(`https://${APP3}/.durin/callback?code=`), "a signed-in browser is handed a code for the nonce hash it was given", caught[0]);
+  await ggoto(caught[0]);
+  check(await gev("location.host") === AUTH, "that code signs nobody in elsewhere: the other browser lands on sign-in", await gev("location.host"));
+  check((await gcdp("Network.getCookies", { urls: [`https://${APP3}/`] })).cookies.every((c) => c.name !== "__Host-durin"), "and gets no session cookie");
 
   await goto(`https://${AUTH}/`);
   check(await ev(`document.getElementById("owner-panel").textContent.includes("guest")`), "the owner sees the new account");

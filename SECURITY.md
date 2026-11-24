@@ -9,6 +9,7 @@ Durin sits in front of other applications and decides who may reach them, so thi
 | Open redirect after sign-in | The return address must be `https`, an app host under the suffix, with no user info, odd port or scheme-relative path; anything else is dropped |
 | Stealing or replaying the hand-off code | One-time, 60 seconds, bound to the app host, stored hashed, and spent by any attempt, right or wrong |
 | One app reading another app's session | Each host has its own `__Host-` cookie (Secure, HttpOnly, no Domain); a cookie opens only the host it was made for, never the auth host |
+| Signing someone into your account (login CSRF) | A sign-in starts on the app host, which plants a nonce cookie; the code is bound to the nonce's hash and refuses any browser without the matching cookie, so a code you make cannot be delivered to someone else |
 | Session fixation | Every sign-in and every hand-off mints a new random token; only a hash is stored |
 | A session that cannot be revoked | Sessions are server-side rows; sign-out ends the sign-in and every app session under it immediately |
 | Forged forwarding headers | Forwarding headers count only from `REVET_TRUSTED_PROXIES`, and only the configured style (`forwarded` or `original`) is read |
@@ -31,6 +32,9 @@ Durin sits in front of other applications and decides who may reach them, so thi
 - **Audit logging beyond the log file.** Sign-ins, sign-ups, invites and removals are logged by account name; denied requests are not.
 - **Owner transfer.** There is one owner. Whoever holds the owner's passkey can invite anyone. See Recovery in the README for a lost owner.
 - **Protection from a compromised proxy or host.** Either can mint what Durin would answer.
+- **A restricted certificate list.** If you use Caddy's on-demand certificates, `GET /.durin/ask` approves any well-formed name under the suffix, so anyone who can reach the proxy can have it issue certificates for made-up names. Keep the proxy off the open internet, or answer the check from your own list.
+- **Hiding the session cookie from apps.** The proxy forwards the host's `__Host-durin` cookie to the app unless you strip it; the app can use it only on its own host.
+- **Keeping invite links out of logs.** An invite link carries its code in the query string, so it appears in the proxy's access log; it works once and for seven days. Cancel unused links from the account page.
 
 Durin has not had an independent security review.
 

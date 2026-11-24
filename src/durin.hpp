@@ -52,6 +52,9 @@ struct Settings {
 };
 
 inline constexpr std::string_view cookie_name = "__Host-durin";
+// Set on an app host when a sign-in starts there, and required to finish it there: a hand-off code
+// made in someone else's browser does not sign this browser in.
+inline constexpr std::string_view nonce_cookie_name = "__Host-durin-nonce";
 
 inline auto settings() -> const Settings& {
     static const Settings s = [] {
@@ -252,7 +255,11 @@ void create_schema(H& h) {
            " code_hash TEXT PRIMARY KEY,"
            " parent_id TEXT NOT NULL REFERENCES durin_sessions(id) ON DELETE CASCADE,"
            " host TEXT NOT NULL,"
+           " nonce_hash TEXT NOT NULL DEFAULT '',"
            " expires_at BIGINT NOT NULL)");
+    if (h.template scalar<long long>("SELECT COUNT(*) FROM pragma_table_info('durin_codes') WHERE name = 'nonce_hash'").value_or(0) == 0) {
+        h.exec("ALTER TABLE durin_codes ADD COLUMN nonce_hash TEXT NOT NULL DEFAULT ''");
+    }
 }
 
 // ── users ────────────────────────────────────────────────────────────────────
@@ -342,12 +349,19 @@ auto check(H& h, std::string_view token, std::string_view host, const Settings& 
     return Who{user_id, name_of(h, user_id), sid, parent, remember != 0};
 }
 
-// A one-time code that lets `host` open a session under the sign-in `parent_id`.
+// The nonce hash a sign-in carries from the app host to the auth host: 64 lower-case hex digits.
+inline auto is_nonce_hash(std::string_view n) -> bool {
+    return n.size() == 64 && std::ranges::all_of(n, [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
+}
+
+// A one-time code that lets `host` open a session under the sign-in `parent_id`, for the browser
+// that holds the nonce whose hash is `nonce_hash`.
 template<typename H>
-auto mint_code(H& h, std::string_view parent_id, std::string_view host, const Settings& s = settings(), long long t = now()) -> std::string {
+auto mint_code(H& h, std::string_view parent_id, std::string_view host, std::string_view nonce_hash, const Settings& s = settings(),
+               long long t = now()) -> std::string {
     const auto code = random_token();
-    h.exec("INSERT INTO durin_codes (code_hash, parent_id, host, expires_at) VALUES (?, ?, ?, ?)", hash(code), std::string(parent_id),
-           std::string(host), t + s.code_seconds);
+    h.exec("INSERT INTO durin_codes (code_hash, parent_id, host, nonce_hash, expires_at) VALUES (?, ?, ?, ?, ?)", hash(code),
+           std::string(parent_id), std::string(host), std::string(nonce_hash), t + s.code_seconds);
     return code;
 }
 
@@ -357,22 +371,23 @@ struct Redeemed {
     long long expires_at = 0;
 };
 
-// Spend a code at `host`. Single use: it is gone whether or not it was for this host.
+// Spend a code at `host`, by the browser holding `nonce`. Single use: it is gone whether or not it
+// was for this host or this browser.
 template<typename H>
-auto redeem_code(H& h, std::string_view code, std::string_view host, const Settings& s = settings(), long long t = now())
-    -> std::optional<Redeemed> {
+auto redeem_code(H& h, std::string_view code, std::string_view host, std::string_view nonce, const Settings& s = settings(),
+                 long long t = now()) -> std::optional<Redeemed> {
     if (code.empty() || code.size() > 128) return std::nullopt;
     web::auth::detail::Tx<H> tx(h);
-    const auto rows = h.template query_as<std::string, std::string>(
-        "DELETE FROM durin_codes WHERE code_hash = ? AND expires_at > ? RETURNING parent_id, host", hash(code), t);
+    const auto rows = h.template query_as<std::string, std::string, std::string>(
+        "DELETE FROM durin_codes WHERE code_hash = ? AND expires_at > ? RETURNING parent_id, host, nonce_hash", hash(code), t);
     if (rows.empty()) {
         tx.commit();
         return std::nullopt;
     }
-    const auto& [parent, code_host] = rows.front();
+    const auto& [parent, code_host, bound] = rows.front();
     const auto p = h.template query_as<std::string, long long, long long, long long, std::optional<long long>>(
         "SELECT user_id, remember, last_seen_at, expires_at, revoked_at FROM durin_sessions WHERE id = ? AND parent_id IS NULL", parent);
-    if (code_host != host || p.empty()) {
+    if (code_host != host || p.empty() || nonce.empty() || nonce.size() > 128 || !web::crypto::secure_eq(hash(nonce), bound)) {
         tx.commit();
         return std::nullopt;
     }
@@ -540,8 +555,14 @@ inline auto auth_url(std::string_view path_and_query = "/") -> std::string {
     return "https://" + settings().auth_host + std::string(path_and_query);
 }
 
+// Where a visitor with no session goes first: the app host's own /.durin/start, which plants a nonce
+// cookie and then sends the browser on to sign in. `path` is the path and query they asked for.
+inline auto start_url(std::string_view host, std::string_view path) -> std::string {
+    return "https://" + std::string(host) + "/.durin/start?rd=" + sanitize::url_encode(std::string(path));
+}
+
 // Forward auth. A live session cookie for the original host: 200 with the user header. Otherwise the
-// sign-in address (with the original address, so sign-in can come back to it), as a 302 or, for
+// start address (carrying the original path, so sign-in can come back to it), as a 302 or, for
 // proxies that only take 2xx/401/403 (nginx auth_request), as a 401 carrying Location.
 template<typename H>
 auto verify(H& h, const web::Request& req, bool redirect) -> web::Response {
@@ -555,7 +576,7 @@ auto verify(H& h, const web::Request& req, bool redirect) -> web::Response {
         return ok;
     }
     const auto path = is_local_path(o.path) ? o.path : std::string("/");
-    const auto to = auth_url("/?rd=" + sanitize::url_encode("https://" + o.host + path));
+    const auto to = start_url(o.host, path);
     if (redirect) return web::redirect(to, web::status::found);
     web::Response no{.body = "sign in", .content_type = "text/plain", .status = web::status::unauthorized};
     no.headers.data["Location"] = to;

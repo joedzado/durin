@@ -185,30 +185,43 @@ TEST_CASE("a sign-in ends after idle time, after the maximum, and not at all for
     CHECK_FALSE(durin::check(h, kept.token, "auth.example.test", s, t + s.remember_seconds + 1));
 }
 
-TEST_CASE("a one-time code opens one host once, then its session follows the sign-in") {
+TEST_CASE("a one-time code opens one host once, in one browser, then its session follows the sign-in") {
     Fixture h0;
     W h(h0.pool);
     const auto s = settings();
     const auto uid = make_user(h, "ann", true);
     const long long t = 2'000'000;
     const auto in = durin::sign_in(h, uid, false, s, t);
+    const std::string nonce = "this-browsers-nonce";
+    const auto bound = durin::hash(nonce);
 
-    const auto code = durin::mint_code(h, in.session_id, "a.example.test", s, t);
-    const auto got = durin::redeem_code(h, code, "a.example.test", s, t + 5);
+    const auto code = durin::mint_code(h, in.session_id, "a.example.test", bound, s, t);
+    const auto got = durin::redeem_code(h, code, "a.example.test", nonce, s, t + 5);
     REQUIRE(got);
     CHECK(durin::check(h, got->started.token, "a.example.test", s, t + 6));
     CHECK_FALSE(durin::check(h, got->started.token, "auth.example.test", s, t + 6)); // not valid on the auth host
     CHECK_FALSE(durin::check(h, got->started.token, "b.example.test", s, t + 6));
-    CHECK_FALSE(durin::redeem_code(h, code, "a.example.test", s, t + 7)); // single use
+    CHECK_FALSE(durin::redeem_code(h, code, "a.example.test", nonce, s, t + 7)); // single use
 
-    const auto wrong = durin::mint_code(h, in.session_id, "a.example.test", s, t);
-    CHECK_FALSE(durin::redeem_code(h, wrong, "b.example.test", s, t + 1)); // bound to its host
-    CHECK_FALSE(durin::redeem_code(h, wrong, "a.example.test", s, t + 2)); // and spent by the attempt
+    const auto wrong = durin::mint_code(h, in.session_id, "a.example.test", bound, s, t);
+    CHECK_FALSE(durin::redeem_code(h, wrong, "b.example.test", nonce, s, t + 1)); // bound to its host
+    CHECK_FALSE(durin::redeem_code(h, wrong, "a.example.test", nonce, s, t + 2)); // and spent by the attempt
 
-    const auto late = durin::mint_code(h, in.session_id, "a.example.test", s, t);
-    CHECK_FALSE(durin::redeem_code(h, late, "a.example.test", s, t + s.code_seconds + 1));
-    CHECK_FALSE(durin::redeem_code(h, "", "a.example.test", s, t));
-    CHECK_FALSE(durin::redeem_code(h, "made-up", "a.example.test", s, t));
+    // A code made for someone else's browser signs nobody else in, however it got there.
+    const auto theirs = durin::mint_code(h, in.session_id, "a.example.test", durin::hash("attackers-nonce"), s, t);
+    CHECK_FALSE(durin::redeem_code(h, theirs, "a.example.test", nonce, s, t + 1));
+    const auto nothing = durin::mint_code(h, in.session_id, "a.example.test", bound, s, t);
+    CHECK_FALSE(durin::redeem_code(h, nothing, "a.example.test", "", s, t + 1)); // a browser with no nonce cookie
+    const auto spent = durin::mint_code(h, in.session_id, "a.example.test", bound, s, t);
+    CHECK_FALSE(durin::redeem_code(h, spent, "a.example.test", "guess", s, t + 1));
+    CHECK_FALSE(durin::redeem_code(h, spent, "a.example.test", nonce, s, t + 2)); // the wrong try spent it
+    const auto unbound = durin::mint_code(h, in.session_id, "a.example.test", "", s, t);
+    CHECK_FALSE(durin::redeem_code(h, unbound, "a.example.test", nonce, s, t + 1));
+
+    const auto late = durin::mint_code(h, in.session_id, "a.example.test", bound, s, t);
+    CHECK_FALSE(durin::redeem_code(h, late, "a.example.test", nonce, s, t + s.code_seconds + 1));
+    CHECK_FALSE(durin::redeem_code(h, "", "a.example.test", nonce, s, t));
+    CHECK_FALSE(durin::redeem_code(h, "made-up", "a.example.test", nonce, s, t));
 
     const auto hosts = durin::hosts_of(h, in.session_id);
     REQUIRE(hosts.size() == 1);
@@ -217,8 +230,17 @@ TEST_CASE("a one-time code opens one host once, then its session follows the sig
     durin::sign_out(h, in.session_id, t + 20);
     CHECK_FALSE(durin::check(h, got->started.token, "a.example.test", s, t + 21));
     CHECK_FALSE(durin::check(h, in.token, "auth.example.test", s, t + 21));
-    const auto dead = durin::mint_code(h, in.session_id, "a.example.test", s, t + 22);
-    CHECK_FALSE(durin::redeem_code(h, dead, "a.example.test", s, t + 23)); // nothing to open under a signed-out sign-in
+    const auto dead = durin::mint_code(h, in.session_id, "a.example.test", bound, s, t + 22);
+    CHECK_FALSE(durin::redeem_code(h, dead, "a.example.test", nonce, s, t + 23)); // nothing to open under a signed-out sign-in
+}
+
+TEST_CASE("a nonce hash is 64 lower-case hex digits") {
+    CHECK(durin::is_nonce_hash(durin::hash("x")));
+    CHECK_FALSE(durin::is_nonce_hash(""));
+    CHECK_FALSE(durin::is_nonce_hash(std::string(63, 'a')));
+    CHECK_FALSE(durin::is_nonce_hash(std::string(65, 'a')));
+    CHECK_FALSE(durin::is_nonce_hash(std::string(64, 'A')));
+    CHECK_FALSE(durin::is_nonce_hash(std::string(63, 'a') + "g"));
 }
 
 TEST_CASE("signing out everywhere ends every sign-in of that user only") {
@@ -307,14 +329,14 @@ TEST_CASE("forward auth: sign-in redirect, 401 for nginx, the user header, and n
 
     const auto none = durin::verify(h, proxied("a.example.test", "/p?q=1"), true);
     CHECK(none.status.code == 302);
-    CHECK(none.location == "https://auth.example.test/?rd=https%3A%2F%2Fa.example.test%2Fp%3Fq%3D1");
+    CHECK(none.location == "https://a.example.test/.durin/start?rd=%2Fp%3Fq%3D1"); // sign-in starts on the app host
 
     const auto no = durin::verify(h, proxied("a.example.test", "/p"), false);
     CHECK(no.status.code == 401);
-    CHECK(no.headers.get("Location") == "https://auth.example.test/?rd=https%3A%2F%2Fa.example.test%2Fp");
+    CHECK(no.headers.get("Location") == "https://a.example.test/.durin/start?rd=%2Fp");
 
     const auto sneaky = durin::verify(h, proxied("a.example.test", "//evil.com"), true);
-    CHECK(sneaky.location == "https://auth.example.test/?rd=https%3A%2F%2Fa.example.test%2F"); // a bad path becomes "/"
+    CHECK(sneaky.location == "https://a.example.test/.durin/start?rd=%2F"); // a bad path becomes "/"
 
     CHECK(durin::verify(h, proxied("evil.com", "/"), true).status.code == 403);
     CHECK(durin::verify(h, proxied("auth.example.test", "/"), true).status.code == 403); // the auth host is never gated
@@ -326,8 +348,8 @@ TEST_CASE("forward auth: sign-in redirect, 401 for nginx, the user header, and n
     CHECK(durin::verify(h, stranger, true).status.code == 403); // forged forwarding headers from an untrusted peer
 
     const auto in = durin::sign_in(h, uid, false);
-    const auto code = durin::mint_code(h, in.session_id, "a.example.test");
-    const auto got = durin::redeem_code(h, code, "a.example.test");
+    const auto code = durin::mint_code(h, in.session_id, "a.example.test", durin::hash("n"));
+    const auto got = durin::redeem_code(h, code, "a.example.test", "n");
     REQUIRE(got);
     const auto ok = durin::verify(h, proxied("a.example.test", "/p", got->started.token), true);
     CHECK(ok.status.code == 200);
