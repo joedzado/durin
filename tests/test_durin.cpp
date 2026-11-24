@@ -375,6 +375,50 @@ TEST_CASE("forward auth: sign-in redirect, 401 for nginx, the user header, and n
     CHECK(durin::verify(h, proxied("a.example.test", "/p", got->started.token), true).status.code == 302);
 }
 
+TEST_CASE("on-demand certificates stay open on a private suffix") {
+    auto s = settings();
+    CHECK(durin::ask_allowed("auth.example.test", s));
+    CHECK(durin::ask_allowed("photos.lab", s));
+    CHECK_FALSE(durin::ask_allowed("photos.example.test", s));
+    CHECK_FALSE(durin::ask_allowed("evil.com", s));
+    s.cert_hosts = {"photos.example.test"};
+    CHECK(durin::ask_allowed("photos.example.test", s));
+    CHECK_FALSE(durin::ask_allowed("other.example.test", s));
+    CHECK_FALSE(durin::ask_allowed("photos.lab", s));
+    CHECK(durin::ask_allowed("auth.example.test", s));
+}
+
+TEST_CASE("a taken name does not burn the invite") {
+    Fixture f;
+    W h(f.pool);
+    const auto s = settings();
+    const auto owner = make_user(h, "ann", true);
+    const long long t = 7'000'000;
+    const auto code = durin::mint_invite(h, owner, s, t);
+    const auto bob = web::auth::find_or_create_user(h, "test", "bob-subject");
+    const auto made = durin::claim_account(h, code, bob, "bob", t + 1);
+    CHECK(made.first == durin::Claim::made);
+    CHECK(made.second == durin::Link::member);
+    CHECK_FALSE(durin::invite_ok(h, code, t + 1));
+
+    const auto again = durin::mint_invite(h, owner, s, t);
+    const auto other = web::auth::find_or_create_user(h, "test", "other-subject");
+    const auto taken = durin::claim_account(h, again, other, "bob", t + 2);
+    CHECK(taken.first == durin::Claim::name_taken);
+    CHECK_FALSE(taken.second);
+    CHECK(durin::invite_ok(h, again, t + 2));
+    const auto bad = durin::claim_account(h, "nope", other, "cara", t + 3);
+    CHECK(bad.first == durin::Claim::invite_bad);
+    CHECK_FALSE(bad.second);
+
+    const auto owner_code = durin::mint_owner_link(h, s, t);
+    const auto neu = web::auth::find_or_create_user(h, "test", "owner-subject");
+    const auto owned = durin::claim_account(h, owner_code, neu, "pat", t + 4);
+    CHECK(owned.first == durin::Claim::made);
+    CHECK(owned.second == durin::Link::owner);
+    CHECK(durin::is_owner(h, neu));
+}
+
 TEST_CASE("an owner link makes an owner, once, for an hour, and only the newest works") {
     Fixture f;
     W h(f.pool);

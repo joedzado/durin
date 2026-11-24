@@ -72,6 +72,7 @@ None are needed. To change one, add it to `.env.local` and run `./install.sh`.
 | Setting | Default | |
 |---|---|---|
 | `DURIN_DOMAINS` | | More domains you control for apps, such as `home,example.org` |
+| `DURIN_CERT_HOSTS` | | If set, the only app hosts allowed an on-demand certificate, such as `photos.example.com`. The auth host is always allowed |
 | `DURIN_IDLE_SECONDS` | `300` | Sign out after this long without activity |
 | `DURIN_MAX_SECONDS` | `43200` | Sign out after this long regardless |
 | `DURIN_REMEMBER_SECONDS` | `2592000` | How long "Remember me" lasts |

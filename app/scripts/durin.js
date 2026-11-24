@@ -106,6 +106,19 @@
     }
   }
 
+  // #invite= is not sent to the proxy, so the code never lands in an access log. Drop it before anything else.
+  const hash = new URLSearchParams(location.hash.startsWith("#") ? location.hash.slice(1) : "");
+  const invited = (hash.get("invite") || "").trim();
+  if (hash.has("invite")) history.replaceState(null, "", location.pathname + location.search);
+  if (invited) {
+    const block = document.getElementById("join-block");
+    const field = document.getElementById("invite-code");
+    if (block && field) {
+      field.value = invited;
+      block.hidden = false;
+    }
+  }
+
   document.addEventListener("durin-note", (ev) => say(ev.detail && ev.detail.value));
   document.addEventListener("click", (ev) => {
     const btn = ev.target.closest("[data-durin]");

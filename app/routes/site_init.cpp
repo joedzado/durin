@@ -55,6 +55,9 @@ void site_init() {
         if (!durin::is_dns_name(d)) throw web::StartupError("DURIN_DOMAINS: not a domain: " + d, 1);
         domains += (domains.empty() ? "*." : ", *.") + d;
     }
+    for (const auto& host : s.cert_hosts) {
+        if (host != s.auth_host && !durin::is_app_host(host)) throw web::StartupError("DURIN_CERT_HOSTS: not an app host: " + host, 1);
+    }
     auto& pk = web::auth::passkeys::config();
     pk.rp_name = "Durin";
     pk.rp.rp_id = s.auth_host;

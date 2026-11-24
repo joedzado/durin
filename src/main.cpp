@@ -22,7 +22,7 @@ auto main(int argc, char** argv) -> int {
         site_init();
         if (owner) {
             auto h = resources::main_db<db::Write>();
-            std::println("{}", durin::auth_url("/?invite=" + durin::mint_owner_link(h)));
+            std::println("{}", durin::invite_url(durin::mint_owner_link(h)));
             return 0;
         }
         std::vector<web::Route> all_routes;

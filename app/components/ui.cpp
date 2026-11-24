@@ -41,16 +41,17 @@ html::Node passkey_list(std::string_view user_id) {
 }
 
 static auto join_form(std::string_view invite, bool live, bool owner) -> html::Node {
-    if (invite.empty()) return html::Node{};
-    if (!live) return html::p{styles::meta, "This link was used, cancelled or has expired. Ask for a new one."};
-    return html::div{styles::setup,
+    if (!invite.empty() && !live) return html::p{styles::meta, "This link was used, cancelled or has expired. Ask for a new one."};
+    // Hidden until a fragment invite arrives. A ?invite= link from an older Durin opens it here.
+    const bool open = !invite.empty() && live;
+    return html::div{html::attr.id("join-block"), styles::setup, open ? html::Node{} : html::attr.hidden(),
         html::h2{styles::subheading, owner ? "Make the owner account" : "You're invited: make an account"},
         html::label{styles::field, "Name", html::input{html::attr.type("text"), html::attr.id("join-name"), html::attr.autocomplete("username")}},
         html::input{html::attr.type("hidden"), html::attr.id("invite-code"), html::attr.value(std::string(invite))},
         html::button{styles::btn, html::attr.type("button"), html::attr("data-durin", "join"), "Create a passkey"}};
 }
 
-// Signed out. `for_host` names the app that sent the visitor here, if any. `invite`: the ?invite= code,
+// Signed out. `for_host` names the app that sent the visitor here, if any. `invite`: a ?invite= code,
 // `live` or not, and whether it makes an `owner`.
 [[revet::export]]
 html::Node sign_in_page(const web::Request& req, std::string_view for_host, std::string_view invite, bool live, bool owner) {

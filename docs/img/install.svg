@@ -29,7 +29,7 @@
 <path d="M520 331 H207" class="a" marker-end="url(#h)"/>
 <text x="528.0" y="336" class="l" text-anchor="start">this one line protects an app</text>
 <text x="36.0" y="446" class="b" textLength="201.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">2. Make your account:</text>
-<text x="45.6" y="484" class="c" textLength="403.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">https://auth.example.com/?invite=dNYT9bX4…</text>
+<text x="45.6" y="484" class="c" textLength="403.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">https://auth.example.com/#invite=dNYT9bX4…</text>
 <rect x="36.6" y="465" width="421.2" height="28" rx="13" class="r"/>
 <path d="M520 479 H463" class="a" marker-end="url(#h)"/>
 <text x="528.0" y="484" class="l" text-anchor="start">then open this: you are in</text>

@@ -79,11 +79,11 @@ try {
   check(await ev(`typeof PublicKeyCredential === "function"`), `${AUTH} is a secure context with WebAuthn (cert trusted)`);
 
   // 2. Sign-up needs a link
-  check(!(await ev(`!!document.querySelector("[data-durin=join]")`)), "no sign-up without a link");
+  check(!(await ev(`document.getElementById("join-block") && !document.getElementById("join-block").hidden`)), "no sign-up without a link");
 
   // 3. The owner link makes the first account; then straight on to the app
   await goto(OWNER_LINK);
-  check(await ev(`document.getElementById("join-name").value`) === "", "the owner link shows an empty new-account form");
+  check(await ev(`document.getElementById("join-block") && !document.getElementById("join-block").hidden && document.getElementById("join-name").value === ""`), "the owner link shows an empty new-account form");
   await ev(`document.getElementById("join-name").value = "owner"`);
   await ev(`document.querySelector("[data-durin=join]").click()`);
   check(await until(`document.body.innerText.includes("Signed in as Owner")`, "owner signed in"), "the owner link makes an account and signs it in", await status());
@@ -118,7 +118,7 @@ try {
   check(await ev("location.host") === `${AUTH}`, `after sign-out, ${APP1}'s old cookie no longer works`, await here());
 
   // 8. Sign in with the passkey, remembered
-  check(!(await ev(`!!document.querySelector("[data-durin=join]")`)), "still no sign-up without a link");
+  check(!(await ev(`document.getElementById("join-block") && !document.getElementById("join-block").hidden`)), "still no sign-up without a link");
   await ev(`document.getElementById("remember").checked = true`);
   const before = (await cdp("WebAuthn.getCredentials", { authenticatorId })).credentials[0]?.signCount ?? -1;
   await ev(`document.querySelector("[data-durin=signin]").click()`);
@@ -134,7 +134,7 @@ try {
   await ev(`[...document.querySelectorAll("#owner-panel button")].find((b) => b.textContent === "New invite link").click()`);
   await until(`document.getElementById("invite-link")`, "invite link");
   const link = await ev(`document.getElementById("invite-link").value`);
-  check(link.startsWith(`https://${AUTH}/?invite=`), "owner gets an invite link", link.slice(0, 32) + "…");
+  check(link.startsWith(`https://${AUTH}/#invite=`), "owner gets an invite link", link.slice(0, 40) + "…");
 
   // A second, separate browser (its own cookies and authenticator) for the invited person
   const { browserContextId } = await send("Target.createBrowserContext");
@@ -163,13 +163,14 @@ try {
   check(await gev("location.host") === AUTH, "a forged code sends a stranger to sign in", await gev("location.host"));
   check((await gcdp("Network.getCookies", { urls: [`https://${APP3}/`] })).cookies.every((c) => c.name !== "__Host-durin"), "and sets no cookie");
   await ggoto(`https://${AUTH}/`);
-  check(!(await gev(`!!document.querySelector("[data-durin=join]")`)), "no sign-up form without an invite");
+  check(!(await gev(`document.getElementById("join-block") && !document.getElementById("join-block").hidden`)), "no sign-up form without an invite");
   check(await gpost("/passkey/register/options", { name: "late" }) === 403, "no account without a link");
   await ggoto(OWNER_LINK);
-  check(await gev(`document.body.textContent.includes("was used")`), "the owner link works only once");
+  const usedOwner = await gev(`document.getElementById("invite-code")?.value ?? ""`);
+  check(usedOwner.length > 10 && await gpost("/passkey/register/options", { name: "late", invite: usedOwner }) === 403, "the owner link works only once");
   check(await gpost("/passkey/register/options", { name: "late", invite: "forged" }) === 403, "a forged invite is refused");
   await ggoto(link);
-  check(await gev(`!!document.querySelector("[data-durin=join]")`), "the invite link shows the new-account form");
+  check(await gev(`document.getElementById("join-block") && !document.getElementById("join-block").hidden`), "the invite link shows the new-account form");
   await gev(`document.getElementById("join-name").value = "guest"`);
   await gev(`document.querySelector("[data-durin=join]").click()`);
   check(await guntil(`document.querySelector("h1")?.textContent === "Signed in as Guest"`, "guest signed in"), "the invite makes an account and signs it in");
@@ -178,7 +179,8 @@ try {
 
   await gcdp("Network.clearBrowserCookies");
   await ggoto(link);
-  check(await gev(`document.body.textContent.includes("was used")`), "an invite works only once");
+  const usedInvite = await gev(`document.getElementById("invite-code")?.value ?? ""`);
+  check(usedInvite.length > 10 && await gpost("/passkey/register/options", { name: "other", invite: usedInvite }) === 403, "an invite works only once");
 
   // A code made for one browser's nonce does not sign another browser in (login CSRF): hold back the
   // hand-off the signed-in owner's browser is sent on, and open it in the signed-out guest's browser.

@@ -5,7 +5,7 @@
 #include "durin.hpp"
 
 // GET / on the auth host. With ?rd=<app address> and a live sign-in: straight back to the app with a
-// one-time code. Otherwise the sign-in page (?invite=<code>: with the new-account form), or, when
+// one-time code. Otherwise the sign-in page (?invite= still opens the form; new links use #invite=), or, when
 // signed in, the account page.
 static auto render_get(const web::Request& req) -> web::Response {
     if (durin::request_host(req) != durin::settings().auth_host) {

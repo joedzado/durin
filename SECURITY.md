@@ -21,7 +21,7 @@ Durin sits in front of other applications and decides who may reach them, so thi
 | A session that cannot be revoked | Sessions are server-side rows; sign-out ends the sign-in and every app session under it immediately |
 | Forged forwarding headers | Each check endpoint reads only headers its proxies overwrite, and its answer goes only to whoever asked. Pages and the hand-off go by `Host` alone |
 | CSRF | Every route except the `/.durin/*` GETs takes the framework's CSRF token |
-| Framing, caching and referrer leaks | `X-Frame-Options: DENY`, a CSP with `frame-ancestors 'none'`, `Cache-Control: no-store` and `Referrer-Policy: no-referrer` on every response (sign-in addresses and invite links carry secrets in the query string) |
+| Framing, caching and referrer leaks | `X-Frame-Options: DENY`, a CSP with `frame-ancestors 'none'`, `Cache-Control: no-store` and `Referrer-Policy: no-referrer` on every response (sign-in addresses and hand-off codes carry secrets in the query string) |
 | Making an account uninvited | Accounts come only from one-use links with a 256-bit code, stored hashed: an owner's invite (seven days), or an owner link made on the server's command line (one hour, newest only). Passkey routes are rate limited per address |
 | Malformed passkey data | Verification is the Revet framework's WebAuthn code (strict CBOR with size and count caps, RP ID and origin checks, user verification required) |
 
@@ -39,9 +39,9 @@ Durin sits in front of other applications and decides who may reach them, so thi
 - **Audit logging beyond the log file.** Sign-ins, sign-ups, invites and removals are logged by account name; denied requests are not.
 - **Demoting owners.** Owners cannot be removed from the web. Whoever holds an owner's passkey can invite anyone.
 - **Protection from a compromised proxy or host.** Either can mint what Durin would answer.
-- **A restricted certificate list.** If you use Caddy's on-demand certificates, `GET /.durin/ask` approves any well-formed name under one of its domains, so anyone who can reach the proxy can have it issue certificates for made-up names. Keep the proxy off the open internet, or answer the check from your own list.
+- **On-demand certificates for a public domain, unless you list them.** `GET /.durin/ask` approves the auth host and any name under a single-label domain (a private suffix). A domain with a dot is refused, so strangers cannot spend a public issuer's quota on made-up names. Set `DURIN_CERT_HOSTS` to the only app hosts that should get one.
 - **Hiding the session cookie from apps.** The proxy forwards the host's `__Host-durin` cookie to the app unless you strip it; the app can use it only on its own host.
-- **Keeping invite links out of logs.** An invite link carries its code in the query string, so it appears in the proxy's access log; it works once and for seven days. Cancel unused links from the account page.
+- **Hiding an old invite link.** New links put the code in the fragment (`#invite=`), which the proxy does not log; the browser sends it only in the passkey request body. A link that still uses `?invite=` appears in the proxy's access log. It works once and for seven days. Cancel unused links from the account page.
 
 Durin has not had an independent security review.
 

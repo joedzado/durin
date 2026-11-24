@@ -49,3 +49,5 @@ To serve `*.home` from one block, let Caddy issue certificates as hosts are firs
 	# one @matcher and handle per app, each with: import durin
 }
 ```
+
+A private suffix is open. On a public domain, `/.durin/ask` says no unless the host is listed in `DURIN_CERT_HOSTS`. Setting that list allows only those hosts, including on a private suffix.

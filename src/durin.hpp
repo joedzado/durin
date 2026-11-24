@@ -40,6 +40,7 @@ struct Settings {
     std::string auth_host;                // DURIN_AUTH_HOST (required): where sign-in happens, the passkey RP ID
     std::vector<std::string> domains;     // app hosts are <name>.<domain>: the auth host's own domain, then
                                           // DURIN_DOMAINS (comma separated)
+    std::vector<std::string> cert_hosts;  // DURIN_CERT_HOSTS: if set, /.durin/ask approves only these app hosts
     std::string user_header = "Remote-User"; // DURIN_USER_HEADER: the header verify answers with the account name
     long long idle_seconds = 5 * 60;      // DURIN_IDLE_SECONDS: unremembered sign-in ends after this much quiet
     long long max_seconds = 12 * 3600;    // DURIN_MAX_SECONDS: ... and after this long in any case
@@ -70,17 +71,22 @@ inline auto settings() -> const Settings& {
         };
         text("DURIN_AUTH_HOST", c.auth_host);
         text("DURIN_USER_HEADER", c.user_header);
-        std::string more;
+        std::string more, certs;
         text("DURIN_DOMAINS", more);
-        for (auto* v : {&c.auth_host, &more}) {
+        text("DURIN_CERT_HOSTS", certs);
+        for (auto* v : {&c.auth_host, &more, &certs}) {
             std::ranges::transform(*v, v->begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
         }
+        auto split_list = [](std::string_view text, std::vector<std::string>& out) {
+            for (const auto part : text | std::views::split(',')) {
+                std::string d(std::string_view{part});
+                std::erase_if(d, [](unsigned char ch) { return std::isspace(ch) != 0; });
+                if (!d.empty()) out.push_back(std::move(d));
+            }
+        };
         if (const auto dot = c.auth_host.find('.'); dot != std::string::npos) c.domains.push_back(c.auth_host.substr(dot + 1));
-        for (const auto part : more | std::views::split(',')) {
-            std::string d(std::string_view{part});
-            std::erase_if(d, [](unsigned char ch) { return std::isspace(ch) != 0; });
-            if (!d.empty()) c.domains.push_back(std::move(d));
-        }
+        split_list(more, c.domains);
+        split_list(certs, c.cert_hosts);
         number("DURIN_IDLE_SECONDS", c.idle_seconds);
         number("DURIN_MAX_SECONDS", c.max_seconds);
         number("DURIN_REMEMBER_SECONDS", c.remember_seconds);
@@ -145,6 +151,20 @@ inline auto is_dns_name(std::string_view n) -> bool {
 inline auto is_app_host(std::string_view host, const Settings& s = settings()) -> bool {
     if (host == s.auth_host || !is_dns_name(host)) return false;
     return std::ranges::any_of(s.domains, [&](const std::string& d) { return host.size() > d.size() + 1 && host.ends_with("." + d); });
+}
+
+// /.durin/ask. The auth host always. With DURIN_CERT_HOSTS, only those app hosts. Otherwise any app host
+// whose domain is a single label (a private suffix). A dotted domain would let strangers mint public
+// certificates until the issuer's quota runs out.
+inline auto ask_allowed(std::string_view domain, const Settings& s = settings()) -> bool {
+    if (domain == s.auth_host) return true;
+    if (!is_app_host(domain, s)) return false;
+    if (!s.cert_hosts.empty()) {
+        return std::ranges::find(s.cert_hosts, std::string(domain)) != s.cert_hosts.end();
+    }
+    return std::ranges::any_of(s.domains, [&](const std::string& d) {
+        return !d.contains('.') && domain.size() > d.size() + 1 && domain.ends_with("." + d);
+    });
 }
 
 // A path the callback may send the browser to on its own host: starts with one '/', no scheme-relative
@@ -535,6 +555,22 @@ auto take_invite(H& h, std::string_view code, long long t = now()) -> std::optio
     return std::get<1>(rows.front()) != 0 ? Link::owner : Link::member;
 }
 
+enum class Claim : std::uint8_t { made, name_taken, invite_bad };
+
+// Spend a link and create the account, or leave the link untouched. A taken name rolls the spend back.
+template<typename H>
+auto claim_account(H& h, std::string_view code, std::string_view user_id, std::string_view name, long long t = now())
+    -> std::pair<Claim, std::optional<Link>> {
+    web::auth::detail::Tx<H> tx(h);
+    if (name_taken(h, name)) return {Claim::name_taken, std::nullopt};
+    const auto link = take_invite(h, code, t);
+    if (!link || !add_user(h, user_id, name, *link == Link::owner, t)) {
+        return {link ? Claim::name_taken : Claim::invite_bad, std::nullopt};
+    }
+    tx.commit();
+    return {Claim::made, link};
+}
+
 struct Invite {
     std::string id;
     std::string by;
@@ -585,6 +621,11 @@ inline auto set_cookie(web::Response& resp, const std::string& token, bool remem
 
 inline auto auth_url(std::string_view path_and_query = "/") -> std::string {
     return "https://" + settings().auth_host + std::string(path_and_query);
+}
+
+// The code stays in the fragment, so a proxy access log does not record it.
+inline auto invite_url(std::string_view code) -> std::string {
+    return auth_url(std::string("/#invite=") + std::string(code));
 }
 
 // Where a visitor with no session goes first: the app host's own /.durin/start, which plants a nonce

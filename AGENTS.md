@@ -17,7 +17,7 @@ Passkey gate for a family of hosts (Revet, C++23). A reverse proxy's forward aut
 4. Auth host: passkey sign-in (framework `web::auth::passkeys`, RP ID = auth host). Signed in + valid `rd` (https, an app host, no userinfo) + valid `n` → one-time code (60 s, single use, bound to the host and the nonce hash) → `https://<host>/.durin/callback?code=…&rd=/path`.
 5. callback swaps the code for a host-only cookie on that host. No shared cookie: browsers refuse one on a bare public suffix, and host-only cookies leak less.
 6. Every cookie names a row in `durin_sessions`; app-host rows hang off the sign-in row. Sign out revokes the sign-in and all its hosts; "Sign out everywhere" revokes all of the user's.
-7. `GET /.durin/ask?domain=` (optional) answers Caddy's on-demand TLS check.
+7. `GET /.durin/ask?domain=` (optional) answers Caddy's on-demand TLS check: the auth host always; otherwise any host under a single-label domain, or only the hosts in `DURIN_CERT_HOSTS` when that list is set.
 8. Envoy's ext_authz appends the request path to the check address, so `/.durin/verify/<path>` is answered by the 404 handler in `site_init.cpp` (Revet has no catch-all route); host and path come from `X-Forwarded-Host`/`-Uri`, which the Envoy config fills in.
 
 ## Rules
@@ -32,7 +32,7 @@ Passkey gate for a family of hosts (Revet, C++23). A reverse proxy's forward aut
 |---|---|
 | `src/durin.hpp` | Settings, original-request headers, host and return-URL checks, schema, sessions, codes, owners and invites, forward auth |
 | `app/routes/.durin/` | `verify`, `auth-request` (forward auth), `start` (nonce, then auth host), `callback` (code → cookie), `ask` (on-demand TLS) |
-| `app/routes/index.cpp` | Auth host: handoff, sign-in page (`?invite=`), account page |
+| `app/routes/index.cpp` | Auth host: handoff, sign-in page (`#invite=` or a legacy `?invite=`), account page |
 | `app/routes/passkey/` | WebAuthn options/finish for sign-in and registration |
 | `app/routes/people/` | Owners: invite, cancel invite, remove person |
 | `app/routes/logout.cpp`, `passkeys*.cpp` | Sign out, passkey list and removal |

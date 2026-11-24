@@ -28,6 +28,7 @@ static auto render_post(const web::Request& req) -> web::Response {
     const auto who = durin::auth_session(h, req);
     if (!who && !durin::invite_ok(h, invite)) return web::api::error(web::status::forbidden, "invite");
     if (!who && !durin::valid_name(name)) return web::api::error(web::status::bad_request, "bad_name");
+    if (!who && durin::name_taken(h, name)) return web::api::error(web::status::conflict, "name_taken");
 
     // The framework refuses a challenge that was not issued to this caller: a signed-in user finishes only
     // their own add-passkey challenge, anyone else only a new-account one.
@@ -42,14 +43,14 @@ static auto render_post(const web::Request& req) -> web::Response {
         log::info("durin: {} added a passkey", who->name);
         return web::Response{.body = R"({"ok":true})", .content_type = "application/json"};
     }
-    // Spend the link before keeping the account.
-    const auto link = durin::take_invite(h, invite);
-    const bool owner = link == durin::Link::owner;
-    if (!link || !durin::add_user(h, done->user_id, name, owner)) {
+    // Spend the link and keep the account together. A taken name leaves the link usable.
+    const auto [claim, link] = durin::claim_account(h, invite, done->user_id, name);
+    if (claim != durin::Claim::made) {
         web::auth::delete_user(h, done->user_id);
-        return link ? web::api::error(web::status::conflict, "name_taken") : web::api::error(web::status::forbidden, "invite");
+        return claim == durin::Claim::name_taken ? web::api::error(web::status::conflict, "name_taken")
+                                                 : web::api::error(web::status::forbidden, "invite");
     }
-    log::info("durin: account {} created{}", name, owner ? " (owner)" : "");
+    log::info("durin: account {} created{}", name, *link == durin::Link::owner ? " (owner)" : "");
     const auto s = durin::sign_in(h, done->user_id, false);
     web::Response resp{.body = R"({"ok":true})", .content_type = "application/json"};
     durin::set_cookie(resp, s.token, false, 0);

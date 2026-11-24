@@ -47,9 +47,9 @@ if [ -n "$USER_NAME" ] && [ "$USER_NAME" != root ]; then
     if command -v certutil >/dev/null; then
         DB="$(getent passwd "$USER_NAME" | cut -d: -f6)/.pki/nssdb"
         CERT="$(mktemp)"; cp "$ROOT" "$CERT"; chmod 644 "$CERT"
-        su "$USER_NAME" -s /bin/sh -c "mkdir -p '$DB' && { [ -f '$DB/cert9.db' ] || certutil -N -d 'sql:$DB' --empty-password; }"
-        su "$USER_NAME" -s /bin/sh -c "certutil -D -d 'sql:$DB' -n 'private-$TLD'" 2>/dev/null || true
-        su "$USER_NAME" -s /bin/sh -c "certutil -A -d 'sql:$DB' -t C,, -n 'private-$TLD' -i '$CERT'"
+        su "$USER_NAME" -s /bin/sh -c 'mkdir -p "$1" && { [ -f "$1/cert9.db" ] || certutil -N -d "sql:$1" --empty-password; }' _ "$DB"
+        su "$USER_NAME" -s /bin/sh -c 'certutil -D -d "sql:$1" -n "$2"' _ "$DB" "private-$TLD" 2>/dev/null || true
+        su "$USER_NAME" -s /bin/sh -c 'certutil -A -d "sql:$1" -t C,, -n "$2" -i "$3"' _ "$DB" "private-$TLD" "$CERT"
         rm -f "$CERT"
         echo "Trusted by Chrome for $USER_NAME. Restart Chrome."
     else
