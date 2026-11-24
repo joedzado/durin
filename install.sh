@@ -56,6 +56,8 @@ esac
 if [ ! -f .env.local ]; then
     (umask 077; printf 'DURIN_AUTH_HOST=%s\nDURIN_PORT=%s\nREVET_COOKIE_KEY=%s\n' "$HOST" "${DURIN_PORT:-3130}" "$(openssl rand -hex 32)" >.env.local)
 fi
+# A bare name such as home: no public certificates, so Caddy makes its own.
+case "${HOST#*.}" in *.*) PRIVATE="" ;; *) PRIVATE=1 ;; esac
 PORT="$(setting DURIN_PORT)"; PORT="${PORT:-3130}"
 
 export PATH="$HOME/.revet/current:/usr/local/bin:/opt/homebrew/bin:$PATH"
@@ -101,9 +103,16 @@ say "Durin is running on 127.0.0.1:$PORT"
 if [ -n "$SECTION" ]; then
     say "1. Add this to $SECTION:"
     awk -v want="## $SECTION" '$0 == want { on = 1; next } /^## / { on = 0 } on' docs/proxies.md |
-        sed -e '/^```/d' -e "s/example\.com/${HOST#*.}/g; s/auth\.${HOST#*.}/$HOST/g; s/3130/$PORT/g"
+        sed -e '/^```/d' -e "s/example\.com/${HOST#*.}/g; s/auth\.${HOST#*.}/$HOST/g; s/3130/$PORT/g" |
+        awk -v private="$PRIVATE" '{ print } private && /^[a-z0-9.-]+ \{$/ { print "\ttls internal" }'
 fi
 if [ -z "$OLD" ]; then
-    say "2. Make your account (link works once, for an hour; ./durin owner prints a new one):"
+    N=2
+    if [ "$PRIVATE" ]; then
+        say "2. *.${HOST#*.} is a private name, so each device needs to find and trust it once:"
+        echo "docs/private-names.md"
+        N=3
+    fi
+    say "$N. Make your account (link works once, for an hour; ./durin owner prints a new one):"
     ./durin owner
 fi

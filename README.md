@@ -4,6 +4,8 @@ One passkey sign-in for all your self-hosted apps.
 
 Durin sits behind your reverse proxy. Sign in once at `auth.example.com` and every app on `*.example.com` opens. No passwords, no email, no outside service.
 
+**It also works on names you make up**, like `photos.home` and `music.home`, with no domain to buy and nothing public. Single sign-on normally shares one cookie across the domain, which browsers refuse on a bare name like `home`. Durin gives each app its own cookie instead, so one sign-in still opens them all.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/dark.png">
   <img src="docs/img/light.png" alt="Durin's sign-in page and account page">
@@ -17,6 +19,8 @@ git clone https://github.com/joedzado/durin && cd durin
 ```
 
 <img src="docs/img/install.svg" alt="1. Run install.sh with your sign-in address and your proxy. 2. Paste what it prints into the proxy. 3. Open the link to make your account.">
+
+On a made-up name it is the same: `./install.sh auth.home caddy`. Your devices then need to [find and trust that name](docs/private-names.md) once.
 
 The first run also installs [Revet](https://github.com/joedzado/revet), the C++ framework Durin is written in.
 
@@ -45,7 +49,8 @@ None are needed. To change one, add it to `.env.local` and run `./install.sh`.
 
 ## More
 
-- [Proxy recipes](docs/proxies.md), including private names such as `*.home`
+- [Proxy recipes](docs/proxies.md)
+- [Private names](docs/private-names.md): setting up your devices for `*.home`
 - [Security](SECURITY.md): how it works, what it protects against, what it does not. Not independently audited.
 
 MIT license.

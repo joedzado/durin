@@ -30,25 +30,6 @@ app.example.com {
 
 `route { }` keeps the callback ahead of `forward_auth`.
 
-## Caddy with a private suffix
-
-With a private suffix (such as `.home`) and `tls internal`, issue certificates per host on first visit and let Durin approve the names:
-
-```caddy
-{
-	on_demand_tls {
-		ask http://127.0.0.1:3130/.durin/ask
-	}
-}
-
-*.home {
-	tls internal {
-		on_demand
-	}
-	# one @matcher + handle per host, each with `import durin`
-}
-```
-
 ## Traefik
 
 ForwardAuth sets `X-Forwarded-Host` and `X-Forwarded-Uri` itself.
